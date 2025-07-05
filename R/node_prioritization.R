@@ -1,4 +1,4 @@
-#' Node prioritization using Laplacian Heat Diffusion (LHD) algorithm
+#' Node Prioritization using Laplacian Heat Diffusion (LHD) algorithm
 #'
 #' This function implements Laplacian Heat Diffusion (LHD) algorithm
 #' on a multi-layered network to prioritize nodes based on their
@@ -23,31 +23,31 @@
 #'       over time, indicating the stabilization point.
 #'
 #' @param multi_layered_network_file A character string specifying the path to the
-#'   integrated multi-layered network data file (e.g., output
-#'   from `construct_multi_layered_network`). Expected columns: 'Feature1',
-#'   'Feature2', 'Edge_Score' (numeric), and 'Edge_Type'.
+#'    integrated multi-layered network data file (e.g., output
+#'    from `construct_multi_layered_network`). Expected columns: 'Feature1',
+#'    'Feature2', 'edge_score' (numeric), and 'edge_type'. # Changed Edge_Score and Edge_Type
 #' @param output_directory A character string specifying the path to the directory
-#'   where the output CSV files (heat scores, correlation data) and plots (correlation
-#'   plots) will be saved. The directory will be created if it does not exist.
+#'    where the output CSV files (heat scores, correlation data) and plots (correlation
+#'    plots) will be saved. The directory will be created if it does not exist.
 #' @param file_type A character string indicating the type of input file.
-#'   Must be "csv" (for comma-separated) or "tsv" (for tab-separated).
+#'    Must be "csv" (for comma-separated) or "tsv" (for tab-separated).
 #' @param time_step_interval A numeric value representing the interval between
-#'   time steps for the heat diffusion simulation (e.g., 0.01).
+#'    time steps for the heat diffusion simulation (e.g., 0.01).
 #' @param stabilization_threshold A numeric value defining the threshold for
-#'   determining stabilization. If the absolute difference in Spearman correlation
-#'   between successive heat vectors falls below this threshold for a specified
-#'   window, the process is considered stabilized.
+#'    determining stabilization. If the absolute difference in Spearman correlation
+#'    between successive heat vectors falls below this threshold for a specified
+#'    window, the process is considered stabilized.
 #' @param stabilization_window_size An integer specifying the number of consecutive
-#'   time steps over which the correlation difference must remain below the
-#'   `stabilization_threshold` for stabilization to be declared.
+#'    time steps over which the correlation difference must remain below the
+#'    `stabilization_threshold` for stabilization to be declared.
 #' @param filter_other_metabolite_edges A logical value. If `TRUE`, when a
-#'   metabolite is used as a seed, all other edges connected to *other* metabolite
-#'   nodes (i.e., not the current seed) are excluded from the network for that
-#'   specific diffusion run. This isolates the diffusion to pathways and other
-#'   non-metabolite nodes. If `FALSE`, the full network is used for each seed.
+#'    metabolite is used as a seed, all other edges connected to *other* metabolite
+#'    nodes (i.e., not the current seed) are excluded from the network for that
+#'    specific diffusion run. This isolates the diffusion to pathways and other
+#'    non-metabolite nodes. If `FALSE`, the full network is used for each seed.
 #' @return The function's primary output consists of multiple
-#'   CSV files (heat scores and correlation data) and JPG plots (correlation plots),
-#'   saved to the specified `output_directory`, one set for each metabolite seed node.
+#'    CSV files (heat scores and correlation data) and JPG plots (correlation plots),
+#'    saved to the specified `output_directory`, one set for each metabolite seed node.
 #' @references
 #' Carlin DE, Demchak B, Pratt D, Sage E, Ideker T. Network propagation in the cytoscape cyberinfrastructure. PLoS computational biology. 2017;13(10):e1005598.
 #' @export
@@ -89,28 +89,28 @@ node_prioritization <- function(
     }
   )
 
-  # Validate required columns in combined_data_full
-  required_cols_network <- c("Feature1", "Feature2", "Edge_Score", "Edge_Type")
+  # Validate required columns in combined_data_full (now expecting snake_case)
+  required_cols_network <- c("Feature1", "Feature2", "edge_score", "edge_type") # Changed Edge_Score and Edge_Type
   if (!all(required_cols_network %in% colnames(combined_data_full))) {
     stop(paste("Input network file '", multi_layered_network_file, "' must contain columns: ", paste(required_cols_network, collapse = ", "), ". Please ensure it's the output from Module 2, Step 4.", sep = ""))
   }
 
-  # Ensure Edge_Score is numeric
-  if (!is.numeric(combined_data_full$Edge_Score)) {
-    stop("Column 'Edge_Score' in the input network file must be numeric.")
+  # Ensure edge_score is numeric
+  if (!is.numeric(combined_data_full$edge_score)) { # Changed Edge_Score
+    stop("Column 'edge_score' in the input network file must be numeric.") # Changed Edge_Score
   }
 
   # 2. Identify all unique metabolite nodes from the FULL network (for looping and for filtering)
   all_metabolite_nodes <- unique(
     dplyr::pull(
-      dplyr::filter(combined_data_full, Edge_Type == "Pathway-Metabolite"),
+      dplyr::filter(combined_data_full, edge_type == "Pathway-Metabolite"), # Changed Edge_Type
       Feature2
     )
   )
   all_metabolite_nodes <- as.character(all_metabolite_nodes)
 
   if (length(all_metabolite_nodes) == 0) {
-    stop("No metabolite nodes found in the network (based on 'Pathway-Metabolite' Edge_Type). Cannot proceed diffusion.")
+    stop("No metabolite nodes found in the network (based on 'Pathway-Metabolite' edge_type). Cannot proceed diffusion.") # Changed Edge_Type
   }
   message("Identified ", length(all_metabolite_nodes), " unique metabolite nodes for seeding and potential filtering.")
 
@@ -195,9 +195,9 @@ node_prioritization <- function(
       message("    Using the full network for diffusion.")
     }
 
-    # --- Convert Edge_Score to absolute value ---
-    current_combined_data$Edge_Score <- abs(current_combined_data$Edge_Score)
-    message("    Edge_Scores converted to absolute values.")
+    # --- Convert edge_score to absolute value ---
+    current_combined_data$edge_score <- abs(current_combined_data$edge_score) # Changed Edge_Score
+    message("    edge_scores converted to absolute values.") # Changed Edge_Scores
 
     # --- Create graph and Laplacian matrix for the CURRENT network configuration ---
     # This block is now inside the loop, as the network structure changes per seed if filtered
@@ -229,7 +229,7 @@ node_prioritization <- function(
             dplyr::rowwise(current_combined_data),
             Node_A = min(Feature1, Feature2), Node_B = max(Feature1, Feature2)
           ),
-          Node_A, Node_B, Edge_Score
+          Node_A, Node_B, edge_score # Changed Edge_Score
         )
       )
     )
@@ -239,12 +239,12 @@ node_prioritization <- function(
     edge_id_graph <- paste0(graph_edges_for_weighting$Node_A, "_", graph_edges_for_weighting$Node_B)
     edge_id_data <- paste0(current_combined_data_sorted$Node_A, "_", current_combined_data_sorted$Node_B)
 
-    matched_weights <- current_combined_data_sorted$Edge_Score[match(edge_id_graph, edge_id_data)]
+    matched_weights <- current_combined_data_sorted$edge_score[match(edge_id_graph, edge_id_data)] # Changed Edge_Score
 
     igraph::E(g_current)$weight <- matched_weights
 
     if (any(is.na(igraph::E(g_current)$weight))) {
-      warning("  Some edges in the graph for seed '", seed_metabolite_id, "' could not be matched to an 'Edge_Score' in the input data. Assigning 0 weight to unmatched edges.")
+      warning("  Some edges in the graph for seed '", seed_metabolite_id, "' could not be matched to an 'edge_score' in the input data. Assigning 0 weight to unmatched edges.") # Changed Edge_Score
       igraph::E(g_current)$weight[is.na(igraph::E(g_current)$weight)] <- 0
     }
 
@@ -282,10 +282,10 @@ node_prioritization <- function(
     output_df <- dplyr::arrange(
       data.frame(
         Node = igraph::V(g_current)$name, # Nodes from the current filtered graph
-        Heat_Score = round(final_heat_scores, 10),
+        Heat_score = round(final_heat_scores, 10), # Changed Heat_Score to Heat_score
         stringsAsFactors = FALSE
       ),
-      dplyr::desc(Heat_Score) # Sort by heat score (descending)
+      dplyr::desc(Heat_score) # Sort by heat score (descending)
     )
 
     # Generate and save output files with cleaned input file name

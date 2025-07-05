@@ -31,7 +31,7 @@
 #'   (p-value) adjustment.
 #' @return A character vector of paths to the generated pathway-metabolite network CSV files.
 #' @keywords internal
-construct_pathway_metabolite_network_internal <- function( # No leading underscore
+construct_pathway_metabolite_network_internal <- function(
   pathway_abundance_file,
   metabolite_concentration_file,
   gsea_results_file,
@@ -316,8 +316,8 @@ construct_pathway_metabolite_network_internal <- function( # No leading undersco
             results_list_for_group[[length(results_list_for_group) + 1]] <- data.frame(
               FunctionID = path_name,
               MetaboliteID = met_name,
-              Correlation = cor_test_result$estimate,
-              P_value = cor_test_result$p.value,
+              correlation = cor_test_result$estimate, # Changed from Correlation
+              p_value = cor_test_result$p.value,     # Changed from P_value
               stringsAsFactors = FALSE
             )
           }
@@ -334,19 +334,19 @@ construct_pathway_metabolite_network_internal <- function( # No leading undersco
     combined_results <- do.call(rbind, results_list_for_group)
 
     # Calculate Q-values using the specified adjustment method for ALL p-values in this group
-    combined_results$Q_value <- stats::p.adjust(combined_results$P_value, method = q_adjust_method)
+    combined_results$q_value <- stats::p.adjust(combined_results$p_value, method = q_adjust_method) # Changed from Q_value
 
-    # 5. Apply filtering based on user choice (now including Q_value)
+    # 5. Apply filtering based on user choice (now including q_value)
     message("  Applying filters for group '", current_group, "'...")
 
     # Filter by absolute correlation coefficient first
-    combined_results_filtered <- dplyr::filter(combined_results, abs(Correlation) >= corr_cutoff)
+    combined_results_filtered <- dplyr::filter(combined_results, abs(correlation) >= corr_cutoff) # Changed from Correlation
 
     if (filter_by == "p_value") {
-      combined_results_filtered <- dplyr::filter(combined_results_filtered, P_value <= p_value_cutoff)
+      combined_results_filtered <- dplyr::filter(combined_results_filtered, p_value <= p_value_cutoff)
       message("  Filtered by p-value <= ", p_value_cutoff)
     } else if (filter_by == "q_value") {
-      combined_results_filtered <- dplyr::filter(combined_results_filtered, Q_value <= q_value_cutoff)
+      combined_results_filtered <- dplyr::filter(combined_results_filtered, q_value <= q_value_cutoff)
       message("  Filtered by q-value <= ", q_value_cutoff, " (", q_adjust_method, " correction)")
     }
 
@@ -355,7 +355,7 @@ construct_pathway_metabolite_network_internal <- function( # No leading undersco
       next
     }
 
-    combined_results_filtered$Group <- current_group
+    combined_results_filtered$group <- current_group # Changed from Group
     all_correlation_results[[current_group]] <- combined_results_filtered
 
     # --- Save results with specific filename based on parameters ---

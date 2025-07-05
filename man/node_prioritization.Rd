@@ -2,7 +2,7 @@
 % Please edit documentation in R/node_prioritization.R
 \name{node_prioritization}
 \alias{node_prioritization}
-\title{Node prioritization using Laplacian Heat Diffusion (LHD) algorithm}
+\title{Node Prioritization using Laplacian Heat Diffusion (LHD) algorithm}
 \usage{
 node_prioritization(
   multi_layered_network_file,
@@ -18,7 +18,7 @@ node_prioritization(
 \item{multi_layered_network_file}{A character string specifying the path to the
 integrated multi-layered network data file (e.g., output
 from `construct_multi_layered_network`). Expected columns: 'Feature1',
-'Feature2', 'Edge_Score' (numeric), and 'Edge_Type'.}
+'Feature2', 'edge_score' (numeric), and 'edge_type'. # Changed Edge_Score and Edge_Type}
 
 \item{output_directory}{A character string specifying the path to the directory
 where the output CSV files (heat scores, correlation data) and plots (correlation
@@ -47,8 +47,8 @@ non-metabolite nodes. If `FALSE`, the full network is used for each seed.}
 }
 \value{
 The function's primary output consists of multiple
-  CSV files (heat scores and correlation data) and JPG plots (correlation plots),
-  saved to the specified `output_directory`, one set for each metabolite seed node.
+   CSV files (heat scores and correlation data) and JPG plots (correlation plots),
+   saved to the specified `output_directory`, one set for each metabolite seed node.
 }
 \description{
 This function implements Laplacian Heat Diffusion (LHD) algorithm

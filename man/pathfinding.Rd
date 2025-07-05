@@ -16,7 +16,7 @@ pathfinding(
 \item{multi_layered_network_file}{A character string specifying the path to the
 integrated multi-layered network data file (e.g., output
 from `construct_multi_layered_network`). Expected columns: 'Feature1',
-'Feature2', 'Edge_Score' (numeric), and 'Edge_Type'.}
+'Feature2', 'edge_score' (numeric), and 'edge_type'.}
 
 \item{source_node}{A character string specifying the name of the starting node
 for pathfinding. This node must exist in the network.}
@@ -33,23 +33,24 @@ Must be "csv" (for comma-separated) or "tsv" (for tab-separated).}
 }
 \value{
 The function's primary output is a CSV file saved
-  to the specified `output_directory`, detailing the edges of the shortest path
-  found between the source and target nodes. If no path is found, `NULL` is returned
-  invisibly and a message is printed.
+   to the specified `output_directory`, detailing the edges of the shortest path
+   found between the source and target nodes. If no path is found, `NULL` is returned
+   invisibly and a message is printed.
 }
 \description{
 This function identifies the shortest path between a specified source node
 and a target node within a multi-layered network using Dijkstra's algorithm.
 }
 \details{
-The edge weights are transformed from `Edge_Score` as follows:
-- If `Edge_Score` is `NA`, weight is `Inf`.
-- If `Edge_Score` is less than 1, weight is `1 / Edge_Score`.
-- If `Edge_Score` is exactly 1, weight is `1 / (Edge_Score + 0.1)` to avoid `1/1=1` which might not be ideal for shortest path.
-- If `Edge_Score` is greater than 1, weight is `Edge_Score`.
-This transformation aims to represent stronger connections (higher `Edge_Score`)
-as shorter paths (lower weights).
+The edge weights are transformed from `edge_score` as follows:
+- `edge_score` is first converted to its absolute value to ensure non-negative weights.
+- If the absolute `edge_score` is `NA`, weight is `Inf`.
+- If the absolute `edge_score` is less than 1, weight is `1 / absolute_edge_score`.
+- If the absolute `edge_score` is exactly 1, weight is `1 / (absolute_edge_score + 0.1)` to avoid `1/1=1` which might not be ideal for shortest path.
+- If the absolute `edge_score` is greater than 1, weight is `absolute_edge_score`.
+This transformation aims to represent stronger connections (higher `edge_score`)
+as shorter paths (lower weights), ensuring all weights are non-negative for Dijkstra's algorithm.
 }
 \references{
-Dijkstra EW. A note on two problems in connexion with graphs.  Edsger Wybe Dijkstra: his life, work, and legacy2022. p. 287-90.
+Dijkstra EW. A note on two problems in connexion with graphs.  Edsger Wybe Dijkstra: his life, work, and legacy2022. p. 287-90.
 }

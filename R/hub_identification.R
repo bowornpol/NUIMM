@@ -19,20 +19,20 @@
 #' 7. Saves the ranked hub identification results to a CSV file.
 #'
 #' @param multi_layered_network_file A character string specifying the path to the
-#'   integrated multi-layered network data file (e.g., output
-#'   from `construct_multi_layered_network`). Expected columns: 'Feature1' and
-#'   'Feature2'. 'Edge_Score' and 'Edge_Type' are loaded but not directly used
-#'   in the MCC calculation itself (only edge presence matters for cliques).
+#'    integrated multi-layered network data file (e.g., output
+#'    from `construct_multi_layered_network`). Expected columns: 'Feature1' and
+#'    'Feature2'. 'Edge_Score' and 'Edge_Type' are loaded but not directly used
+#'    in the MCC calculation itself (only edge presence matters for cliques).
 #' @param output_directory A character string specifying the path to the directory
-#'   where the hub identification results will be saved as a CSV file.
-#'   The directory will be created if it does not exist.
+#'    where the hub identification results will be saved as a CSV file.
+#'    The directory will be created if it does not exist.
 #' @param file_type A character string indicating the type of input file.
-#'   Must be "csv" (for comma-separated) or "tsv" (for tab-separated).
+#'    Must be "csv" (for comma-separated) or "tsv" (for tab-separated).
 #' @param top_n_hubs An optional integer specifying the number of top hub nodes
-#'   to return. If `NULL` (default), all nodes will be returned, ranked by MCC score.
+#'    to return. If `NULL` (default), all nodes will be returned, ranked by MCC score.
 #' @return The function's primary output is a CSV file saved
-#'   to the specified `output_directory`, containing the ranked list of nodes
-#'   and their MCC scores.
+#'    to the specified `output_directory`, containing the ranked list of nodes
+#'    and their MCC scores.
 #' @references
 #' Chin CH, Chen SH, Wu HH, Ho CW, Ko MT, Lin CY. cytoHubba: identifying hub objects and sub-networks from complex interactome. BMC systems biology. 2014 Dec;8:1-7.
 #' @export
@@ -120,10 +120,10 @@ hub_identification <- function(
   hub_results_df <- dplyr::arrange(
     data.frame(
       Node = names(mcc_scores),
-      MCC_Score = mcc_scores,
+      MCC_score = mcc_scores, # Changed MCC_Score to MCC_score (PascalCase to CamelCase)
       stringsAsFactors = FALSE
     ),
-    dplyr::desc(MCC_Score) # Sort in descending order of MCC score
+    dplyr::desc(MCC_score) # Sort in descending order of MCC_score
   )
 
   # 6. Apply top_n_hubs filter if specified
@@ -137,7 +137,7 @@ hub_identification <- function(
   }
 
   # 7. Save the results
-  output_filename <- paste0("hub_identification_mcc_", cleaned_input_file_name,
+  output_filename <- paste0("hub_mcc_", cleaned_input_file_name,
                             if(!is.null(top_n_hubs)) paste0("_top", top_n_hubs) else "", ".csv")
   output_filepath <- file.path(output_directory, output_filename)
   message("\n5. Saving hub identification results to: ", output_filepath)

@@ -4,33 +4,34 @@
 #' and a target node within a multi-layered network using Dijkstra's algorithm.
 #'
 #' @details
-#' The edge weights are transformed from `Edge_Score` as follows:
-#' - If `Edge_Score` is `NA`, weight is `Inf`.
-#' - If `Edge_Score` is less than 1, weight is `1 / Edge_Score`.
-#' - If `Edge_Score` is exactly 1, weight is `1 / (Edge_Score + 0.1)` to avoid `1/1=1` which might not be ideal for shortest path.
-#' - If `Edge_Score` is greater than 1, weight is `Edge_Score`.
-#' This transformation aims to represent stronger connections (higher `Edge_Score`)
-#' as shorter paths (lower weights).
+#' The edge weights are transformed from `edge_score` as follows:
+#' - `edge_score` is first converted to its absolute value to ensure non-negative weights.
+#' - If the absolute `edge_score` is `NA`, weight is `Inf`.
+#' - If the absolute `edge_score` is less than 1, weight is `1 / absolute_edge_score`.
+#' - If the absolute `edge_score` is exactly 1, weight is `1 / (absolute_edge_score + 0.1)` to avoid `1/1=1` which might not be ideal for shortest path.
+#' - If the absolute `edge_score` is greater than 1, weight is `absolute_edge_score`.
+#' This transformation aims to represent stronger connections (higher `edge_score`)
+#' as shorter paths (lower weights), ensuring all weights are non-negative for Dijkstra's algorithm.
 #'
 #' @param multi_layered_network_file A character string specifying the path to the
-#'   integrated multi-layered network data file (e.g., output
-#'   from `construct_multi_layered_network`). Expected columns: 'Feature1',
-#'   'Feature2', 'Edge_Score' (numeric), and 'Edge_Type'.
+#'    integrated multi-layered network data file (e.g., output
+#'    from `construct_multi_layered_network`). Expected columns: 'Feature1',
+#'    'Feature2', 'edge_score' (numeric), and 'edge_type'.
 #' @param source_node A character string specifying the name of the starting node
-#'   for pathfinding. This node must exist in the network.
+#'    for pathfinding. This node must exist in the network.
 #' @param target_node A character string specifying the name of the ending node
-#'   for pathfinding. This node must exist in the network.
+#'    for pathfinding. This node must exist in the network.
 #' @param output_directory A character string specifying the path to the directory
-#'   where the shortest path results will be saved as a CSV file. The directory
-#'   will be created if it does not exist.
+#'    where the shortest path results will be saved as a CSV file. The directory
+#'    will be created if it does not exist.
 #' @param file_type A character string indicating the type of input file.
-#'   Must be "csv" (for comma-separated) or "tsv" (for tab-separated).
+#'    Must be "csv" (for comma-separated) or "tsv" (for tab-separated).
 #' @return The function's primary output is a CSV file saved
-#'   to the specified `output_directory`, detailing the edges of the shortest path
-#'   found between the source and target nodes. If no path is found, `NULL` is returned
-#'   invisibly and a message is printed.
+#'    to the specified `output_directory`, detailing the edges of the shortest path
+#'    found between the source and target nodes. If no path is found, `NULL` is returned
+#'    invisibly and a message is printed.
 #' @references
-#' Dijkstra EW. A note on two problems in connexion with graphs.  Edsger Wybe Dijkstra: his life, work, and legacy2022. p. 287-90.
+#' Dijkstra EW. A note on two problems in connexion with graphs.  Edsger Wybe Dijkstra: his life, work, and legacy2022. p. 287-90.
 #' @export
 pathfinding <- function(
   multi_layered_network_file,
@@ -53,7 +54,7 @@ pathfinding <- function(
   # 1. Load network
   message("\n1. Loading multi-layered network from: ", multi_layered_network_file)
 
-  required_cols <- c("Feature1", "Feature2", "Edge_Score", "Edge_Type")
+  required_cols <- c("Feature1", "Feature2", "edge_score", "edge_type")
   if (!file.exists(multi_layered_network_file)) {
     stop("Network file not found: '", multi_layered_network_file, "'")
   }
@@ -64,19 +65,19 @@ pathfinding <- function(
   }
   message("  Successfully loaded and validated network file.")
 
-  if (!is.numeric(network_data$Edge_Score)) {
-    stop("Column 'Edge_Score' must be numeric.")
-  }
+  # Ensure edge_score is numeric
+  network_data$edge_score <- as.numeric(network_data$edge_score)
 
-  # Convert Edge_Score to absolute
-  network_data$Edge_Score <- abs(network_data$Edge_Score)
+  # --- FIX: Convert edge_score to absolute value before weight transformation ---
+  network_data$edge_score_abs <- abs(network_data$edge_score)
+  message("  Converted 'edge_score' to its absolute value for weight calculation.")
 
   # 2. Create graph directly with edge attributes
   message("  Creating graph and assigning weights.")
   g <- igraph::graph_from_data_frame(d = network_data, directed = FALSE)
 
-  # Apply weight transformation
-  igraph::E(g)$weight <- sapply(igraph::E(g)$Edge_Score, function(w) {
+  # Apply weight transformation using the *absolute* edge_score
+  igraph::E(g)$weight <- sapply(igraph::E(g)$edge_score_abs, function(w) { # Changed to edge_score_abs
     if (is.na(w)) {
       Inf
     } else if (w < 1) {
@@ -105,7 +106,12 @@ pathfinding <- function(
     message("  Path found with ", length(path_edges), " steps.")
 
     edge_df <- igraph::as_data_frame(g, what = "edges")[path_edges, ]
-    path_df <- dplyr::select(edge_df, Source = from, Target = to, Original_Edge_Score = Edge_Score, Transformed_Weight = weight, Edge_Type)
+    path_df <- dplyr::select(edge_df,
+                             Source = from,
+                             Target = to,
+                             original_edge_score = edge_score,       # This refers to the original, potentially negative, edge_score
+                             transformed_weight = weight,
+                             edge_type = edge_type)
 
     # Sanitize node names for filename
     safe_from <- gsub("[^A-Za-z0-9_.-]", "_", source_node)

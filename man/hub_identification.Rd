@@ -30,8 +30,8 @@ to return. If `NULL` (default), all nodes will be returned, ranked by MCC score.
 }
 \value{
 The function's primary output is a CSV file saved
-  to the specified `output_directory`, containing the ranked list of nodes
-  and their MCC scores.
+   to the specified `output_directory`, containing the ranked list of nodes
+   and their MCC scores.
 }
 \description{
 This function identifies hub nodes in a multi-layered network using the

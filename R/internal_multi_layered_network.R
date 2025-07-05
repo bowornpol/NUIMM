@@ -22,7 +22,7 @@
 #' @param file_type A character string indicating the type of input files.
 #' @return A character string representing the path to the generated multi-layered network CSV file.
 #' @keywords internal
-construct_multi_layered_network_internal <- function( # No leading underscore
+construct_multi_layered_network_internal <- function(
   gsea_results_file,
   microbe_pathway_file,
   pathway_jaccard_file,
@@ -114,9 +114,9 @@ construct_multi_layered_network_internal <- function( # No leading underscore
           dplyr::filter(mp_df, FunctionID %in% pathways_to_integrate_set),
           Feature1 = TaxonID,
           Feature2 = FunctionID,
-          Edge_Score = relative_contribution
+          edge_score = relative_contribution # Changed from Edge_Score
         ),
-        Edge_Type = "Microbe-Pathway"
+        edge_type = "Microbe-Pathway" # Changed from Edge_Type
       )
       if (nrow(mp_filtered) > 0) {
         all_network_edges[[length(all_network_edges) + 1]] <- mp_filtered
@@ -150,9 +150,9 @@ construct_multi_layered_network_internal <- function( # No leading underscore
           dplyr::filter(pp_df, FunctionID_1 %in% pathways_to_integrate_set & FunctionID_2 %in% pathways_to_integrate_set),
           Feature1 = FunctionID_1,
           Feature2 = FunctionID_2,
-          Edge_Score = jaccard_index
+          edge_score = jaccard_index # Changed from Edge_Score
         ),
-        Edge_Type = "Pathway-Pathway"
+        edge_type = "Pathway-Pathway" # Changed from Edge_Type
       )
       if (nrow(pp_filtered) > 0) {
         all_network_edges[[length(all_network_edges) + 1]] <- pp_filtered
@@ -178,16 +178,16 @@ construct_multi_layered_network_internal <- function( # No leading underscore
       }
     )
 
-    if (!is.null(pm_df) && all(c("FunctionID", "MetaboliteID", "Correlation") %in% colnames(pm_df))) {
+    if (!is.null(pm_df) && all(c("FunctionID", "MetaboliteID", "correlation") %in% colnames(pm_df))) { # Changed from Correlation
       # Filter by pathways identified from GSEA files (FunctionID must be a GSEA pathway)
       pm_filtered <- dplyr::mutate(
         dplyr::select(
           dplyr::filter(pm_df, FunctionID %in% pathways_to_integrate_set),
           Feature1 = FunctionID,
           Feature2 = MetaboliteID,
-          Edge_Score = Correlation
+          edge_score = correlation # Changed from Edge_Score
         ),
-        Edge_Type = "Pathway-Metabolite"
+        edge_type = "Pathway-Metabolite" # Changed from Edge_Type
       )
       if (nrow(pm_filtered) > 0) {
         all_network_edges[[length(all_network_edges) + 1]] <- pm_filtered
@@ -210,7 +210,7 @@ construct_multi_layered_network_internal <- function( # No leading underscore
   }
 
   # Define the required output columns
-  final_cols <- c("Feature1", "Feature2", "Edge_Score", "Edge_Type")
+  final_cols <- c("Feature1", "Feature2", "edge_score", "edge_type") # Changed column names
 
   final_network_df <- dplyr::select(dplyr::bind_rows(all_network_edges), dplyr::all_of(final_cols)) # Ensure only the specified columns are kept and in order
 
