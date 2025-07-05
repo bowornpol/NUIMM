@@ -21,3 +21,5 @@ Imports:
     tidyr,
     tools
 RoxygenNote: 7.3.2
+URL: https://github.com/bowornpol/NUIM
+BugReports: https://github.com/bowornpol/NUIM/issues
