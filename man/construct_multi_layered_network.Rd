@@ -42,9 +42,7 @@ The directory will be created if it does not exist.}
 Must be "csv" (for comma-separated) or "tsv" (for tab-separated).}
 }
 \value{
-The function's primary output is a single CSV file
-  saved to the specified `output_directory`, containing the combined and
-  filtered edges from all integrated network layers.
+Invisible \code{NULL}. The function's primary output is a single CSV file saved to the specified \code{output_directory}, containing the combined and filtered edges from all integrated network layers.
 }
 \description{
 This function integrates various network layers (Microbe-Pathway, Pathway-Pathway,

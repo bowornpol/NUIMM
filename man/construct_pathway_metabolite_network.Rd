@@ -65,9 +65,7 @@ cutoff. Required if `filter_by` is "q_value".}
 Used if `filter_by` is "q_value".}
 }
 \value{
-The function's primary output is CSV files saved
-  to the specified `output_file` directory, containing the filtered pathway-metabolite
-  correlation results for each processed group.
+Invisible \code{NULL}. The function's primary output is CSV files saved to the specified \code{output_file} directory, containing the filtered pathway-metabolite correlation results for each processed group.
 }
 \description{
 This function calculates correlations between pathway abundances and metabolite

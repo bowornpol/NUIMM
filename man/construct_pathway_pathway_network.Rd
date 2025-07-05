@@ -47,9 +47,7 @@ Must be either "signed_log_pvalue" (sign of log2FoldChange * -log10(p-value))
 or "log2FoldChange".}
 }
 \value{
-The function's primary output is CSV files saved
-  to the specified `output_file` directory, containing GSEA results and
-  pathway Jaccard indices for each comparison.
+Invisible \code{NULL}. The function's primary output is CSV files saved to the specified \code{output_file} directory, containing GSEA results and pathway Jaccard indices for each comparison.
 }
 \description{
 This function performs differential expression analysis (using DESeq2) and
