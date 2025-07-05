@@ -1,10 +1,9 @@
 #' Pathfinding using Dijkstra's algorithm
 #'
 #' This function identifies the shortest path between a specified source node
-#' and a target node within an integrated multi-layered network. It constructs
-#' an `igraph` object from the network data and uses Dijkstra's algorithm
-#' with transformed edge weights to find the optimal path.
+#' and a target node within a multi-layered network using Dijkstra's algorithm.
 #'
+#' @details
 #' The edge weights are transformed from `Edge_Score` as follows:
 #' - If `Edge_Score` is `NA`, weight is `Inf`.
 #' - If `Edge_Score` is less than 1, weight is `1 / Edge_Score`.
@@ -14,7 +13,7 @@
 #' as shorter paths (lower weights).
 #'
 #' @param multi_layered_network_file A character string specifying the path to the
-#'   CSV file containing the integrated multi-layered network data (e.g., output
+#'   integrated multi-layered network data file (e.g., output
 #'   from `construct_multi_layered_network`). Expected columns: 'Feature1',
 #'   'Feature2', 'Edge_Score' (numeric), and 'Edge_Type'.
 #' @param source_node A character string specifying the name of the starting node
@@ -24,22 +23,23 @@
 #' @param output_directory A character string specifying the path to the directory
 #'   where the shortest path results will be saved as a CSV file. The directory
 #'   will be created if it does not exist.
+#' @param file_type A character string indicating the type of input file.
+#'   Must be "csv" (for comma-separated) or "tsv" (for tab-separated).
 #' @return The function's primary output is a CSV file saved
 #'   to the specified `output_directory`, detailing the edges of the shortest path
 #'   found between the source and target nodes. If no path is found, `NULL` is returned
 #'   invisibly and a message is printed.
 #' @references
 #' Dijkstra EW. A note on two problems in connexion with graphs.  Edsger Wybe Dijkstra: his life, work, and legacy2022. p. 287-90.
-#' @importFrom igraph graph_from_data_frame shortest_paths V E as_data_frame
-#' @importFrom dplyr %>% select
-#' @importFrom stringr str_match
 #' @export
 pathfinding <- function(
   multi_layered_network_file,
   source_node,
   target_node,
-  output_directory
+  output_directory,
+  file_type = c("csv", "tsv")
 ) {
+  file_type <- match.arg(file_type)
   message("Starting shortest pathfinding using Dijkstra's algorithm.")
 
   # Create output directory if it doesn't exist
@@ -58,7 +58,7 @@ pathfinding <- function(
     stop("Network file not found: '", multi_layered_network_file, "'")
   }
 
-  network_data <- read.csv(multi_layered_network_file, stringsAsFactors = FALSE)
+  network_data <- read_input_file(multi_layered_network_file, file_type = file_type, stringsAsFactors = FALSE)
   if (!all(required_cols %in% colnames(network_data))) {
     stop("Network file must contain columns: ", paste(required_cols, collapse = ", "))
   }
@@ -73,10 +73,10 @@ pathfinding <- function(
 
   # 2. Create graph directly with edge attributes
   message("  Creating graph and assigning weights.")
-  g <- graph_from_data_frame(d = network_data, directed = FALSE)
+  g <- igraph::graph_from_data_frame(d = network_data, directed = FALSE)
 
   # Apply weight transformation
-  E(g)$weight <- sapply(E(g)$Edge_Score, function(w) {
+  igraph::E(g)$weight <- sapply(igraph::E(g)$Edge_Score, function(w) {
     if (is.na(w)) {
       Inf
     } else if (w < 1) {
@@ -90,13 +90,13 @@ pathfinding <- function(
 
   # 3. Validate nodes
   message("\n2. Validating source and target nodes against the network.")
-  if (!source_node %in% V(g)$name) stop("Source node not found in network: ", source_node)
-  if (!target_node %in% V(g)$name) stop("Target node not found in network: ", target_node)
+  if (!source_node %in% igraph::V(g)$name) stop("Source node not found in network: ", source_node)
+  if (!target_node %in% igraph::V(g)$name) stop("Target node not found in network: ", target_node)
   message("  Both source and target nodes found.")
 
   # 4. Find shortest path
   message("\n3. Finding shortest path from '", source_node, "' to '", target_node, "'...")
-  result <- shortest_paths(g, from = source_node, to = target_node, weights = E(g)$weight, output = "both")
+  result <- igraph::shortest_paths(g, from = source_node, to = target_node, weights = igraph::E(g)$weight, output = "both")
 
   path_vertices <- result$vpath[[1]]
   path_edges <- result$epath[[1]]
@@ -105,8 +105,7 @@ pathfinding <- function(
     message("  Path found with ", length(path_edges), " steps.")
 
     edge_df <- igraph::as_data_frame(g, what = "edges")[path_edges, ]
-    path_df <- edge_df %>%
-      select(Source = from, Target = to, Original_Edge_Score = Edge_Score, Transformed_Weight = weight, Edge_Type)
+    path_df <- dplyr::select(edge_df, Source = from, Target = to, Original_Edge_Score = Edge_Score, Transformed_Weight = weight, Edge_Type)
 
     # Sanitize node names for filename
     safe_from <- gsub("[^A-Za-z0-9_.-]", "_", source_node)

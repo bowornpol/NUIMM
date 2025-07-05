@@ -9,6 +9,7 @@ construct_pathway_pathway_network(
   metadata_file,
   map_file,
   output_file,
+  file_type = c("csv", "tsv"),
   pvalueCutoff,
   pAdjustMethod = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY",
     "none"),
@@ -16,20 +17,23 @@ construct_pathway_pathway_network(
 )
 }
 \arguments{
-\item{abundance_file}{A character string specifying the path to the CSV file
-containing gene abundance data. The first column should be gene IDs,
+\item{abundance_file}{A character string specifying the path to the
+gene abundance data file. The first column should be gene IDs,
 and subsequent columns should be sample counts (integers).}
 
-\item{metadata_file}{A character string specifying the path to the CSV file
-containing sample metadata. Must include 'SampleID' and 'class' columns.}
+\item{metadata_file}{A character string specifying the path to the sample metadata file.
+Must include 'SampleID' and 'class' columns.}
 
-\item{map_file}{A character string specifying the path to the CSV file
-containing pathway-to-gene mapping. Expected to be a two-column CSV
+\item{map_file}{A character string specifying the path to the
+pathway-to-gene mapping file. Expected to be a two-column CSV/TSV
 where the first column is Pathway ID and the second is Gene ID.}
 
 \item{output_file}{A character string specifying the path to the directory
 where output CSV files (GSEA results and Jaccard indices) will be saved.
 The directory will be created if it does not exist.}
+
+\item{file_type}{A character string indicating the type of input files.
+Must be "csv" (for comma-separated) or "tsv" (for tab-separated).}
 
 \item{pvalueCutoff}{A numeric value specifying the adjusted p-value cutoff
 for determining significance in GSEA results.}

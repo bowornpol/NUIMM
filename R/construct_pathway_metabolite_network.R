@@ -5,38 +5,33 @@
 #' statistical significance. It supports both Spearman and Pearson correlation
 #' methods and various p-value/q-value adjustment options.
 #'
-#' The function performs the following key steps:
-#' 1. Loads pathway abundance, metabolite concentration, and optional GSEA results
-#'    and metadata files.
-#' 2. Prepares data by aligning samples across datasets and converting pathway
-#'    abundances to relative values.
-#' 3. Optionally filters pathways based on identifiers found in a provided GSEA
-#'    results file.
-#' 4. Determines groups for correlation analysis based on metadata, with priority
-#'    given to a specific group implied by the GSEA results filename if provided.
-#' 5. Performs pairwise correlations between pathways and metabolites for each
-#'    identified group using `stats::cor.test`.
-#' 6. Calculates adjusted p-values (q-values) for all correlations within a group.
-#' 7. Filters correlation results based on absolute correlation coefficient,
-#'    p-value, or q-value cutoffs.
-#' 8. Saves the filtered correlation results as CSV files for each processed group.
+#' @details
+#' The edge weights are transformed from `Edge_Score` as follows:
+#' - If `Edge_Score` is `NA`, weight is `Inf`.
+#' - If `Edge_Score` is less than 1, weight is `1 / Edge_Score`.
+#' - If `Edge_Score` is exactly 1, weight is `1 / (Edge_Score + 0.1)` to avoid `1/1=1` which might not be ideal for shortest path.
+#' - If `Edge_Score` is greater than 1, weight is `Edge_Score`.
+#' This transformation aims to represent stronger connections (higher `Edge_Score`)
+#' as shorter paths (lower weights).
 #'
 #' @param pathway_abundance_file A character string specifying the path to the
-#'   CSV file containing pathway abundance data. Expected: Pathways as rows,
+#'   pathway abundance data file. Expected: Pathways as rows,
 #'   samples as columns, with the first column being pathway IDs.
 #' @param metabolite_concentration_file A character string specifying the path
-#'   to the CSV file containing metabolite concentration data. Expected: Samples
+#'   to the metabolite concentration data file. Expected: Samples
 #'   as rows, metabolites as columns, with the first column being sample IDs.
 #' @param gsea_results_file An optional character string specifying the path
-#'   to a GSEA results CSV file (e.g., from `construct_pathway_pathway_network`).
+#'   to a GSEA results file (e.g., from `construct_pathway_pathway_network`).
 #'   If provided, pathways will be filtered to those present in this file, and
 #'   the filename might influence group processing. Set to `NULL` if not used.
 #' @param metadata_file An optional character string specifying the path to the
-#'   CSV file containing sample metadata. Must include 'SampleID' and 'class'
+#'   sample metadata file. Must include 'SampleID' and 'class'
 #'   columns if provided. If `NULL`, all samples are treated as a single 'overall' group.
 #' @param output_file A character string specifying the path to the directory
 #'   where the output CSV files (correlation results) will be saved.
 #'   The directory will be created if it does not exist.
+#' @param file_type A character string indicating the type of input files.
+#'   Must be "csv" (for comma-separated) or "tsv" (for tab-separated).
 #' @param correlation_method A character string specifying the correlation method.
 #'   Must be "spearman" or "pearson".
 #' @param filter_by A character string specifying how to filter the correlation
@@ -54,12 +49,6 @@
 #' @return The function's primary output is CSV files saved
 #'   to the specified `output_file` directory, containing the filtered pathway-metabolite
 #'   correlation results for each processed group.
-#' @importFrom dplyr %>% filter mutate across select
-#' @importFrom tidyr gather
-#' @importFrom stats cor.test p.adjust
-#' @importFrom tibble rownames_to_column column_to_rownames
-#' @importFrom stringr str_match
-#' @importFrom tools file_path_sans_ext
 #' @export
 construct_pathway_metabolite_network <- function(
   pathway_abundance_file,
@@ -67,6 +56,7 @@ construct_pathway_metabolite_network <- function(
   gsea_results_file,
   metadata_file,
   output_file,
+  file_type = c("csv", "tsv"),
   correlation_method = c("spearman", "pearson"),
   filter_by = c("none", "p_value", "q_value"),
   corr_cutoff,
@@ -75,6 +65,7 @@ construct_pathway_metabolite_network <- function(
   q_adjust_method = c("bonferroni", "fdr")
 ) {
   # Validate inputs
+  file_type <- match.arg(file_type)
   correlation_method <- match.arg(correlation_method)
   filter_by <- match.arg(filter_by)
   q_adjust_method <- match.arg(q_adjust_method)
@@ -92,7 +83,7 @@ construct_pathway_metabolite_network <- function(
 
   message("Absolute correlation coefficient cutoff: ", corr_cutoff)
   if (filter_by == "p_value") message("P-value cutoff: ", p_value_cutoff)
-  if (filter_by == "q_value") message("Q-value cutoff: ", q_value_cutoff, " (using ", q_adjust_method, " correction)")
+  if (filter_by == "q_value") message("Q-value cutoff: ", q_value_cutoff, " (", q_adjust_method, " correction)")
 
   # Create output directory if it doesn't exist
   if (!dir.exists(output_file)) {
@@ -114,7 +105,7 @@ construct_pathway_metabolite_network <- function(
       # Account for additional parameters after the group names
       match_result <- stringr::str_match(gsea_basename, "^gsea_results_([^_]+)_vs_([^_]+).*$")
 
-      if (!is.na(match_result[1,1])) {
+      if (!is.na(match_result[1,1])) { # If the full pattern matches successfully
         gsea_source_group <- match_result[1,2]
         gsea_target_group_from_filename <- match_result[1,3]
 
@@ -122,7 +113,7 @@ construct_pathway_metabolite_network <- function(
         message("Derived GSEA filename suffix: '", gsea_suffix, "' (from GSEA target group)")
 
       } else {
-        message("  Warning: GSEA results file name '", basename(gsea_results_file), "' did not strictly match the 'gsea_results_SOURCE_vs_TARGET*.csv' pattern. No GSEA-specific group filtering will be applied based on filename.")
+        message("  Warning: GSEA results file name '", basename(gsea_results_file), "' did not strictly match the 'gsea_results_SOURCE_vs_TARGET*.csv' pattern for precise group identification. No GSEA-specific group filtering will be applied based on filename.")
       }
     } else {
       message("  Warning: GSEA results file '", gsea_results_file, "' not found. No GSEA-specific group filtering will be applied based on filename.")
@@ -136,7 +127,7 @@ construct_pathway_metabolite_network <- function(
 
   # Load Pathway Abundance (Expected: Pathways as Rows, Samples as Columns)
   pathway_abun_absolute <- tryCatch(
-    read.csv(pathway_abundance_file, header = TRUE, row.names = 1, stringsAsFactors = FALSE),
+    read_input_file(pathway_abundance_file, file_type = file_type, header = TRUE, row.names = 1, stringsAsFactors = FALSE),
     error = function(e) {
       stop(paste("Error loading pathway abundance file '", pathway_abundance_file, "': ", e$message, sep = ""))
     }
@@ -144,7 +135,7 @@ construct_pathway_metabolite_network <- function(
 
   # Load Metabolite Concentration (Expected: Samples as Rows, Metabolites as Columns)
   metabolite_conc_absolute <- tryCatch(
-    read.csv(metabolite_concentration_file, header = TRUE, row.names = 1, stringsAsFactors = FALSE),
+    read_input_file(metabolite_concentration_file, file_type = file_type, header = TRUE, row.names = 1, stringsAsFactors = FALSE),
     error = function(e) {
       stop(paste("Error loading metabolite concentration file '", metabolite_concentration_file, "': ", e$message, sep = ""))
     }
@@ -158,7 +149,7 @@ construct_pathway_metabolite_network <- function(
   if (!is.null(metadata_file)) {
     message("2. Loading sample metadata from: ", metadata_file)
     metadata <- tryCatch(
-      read.csv(metadata_file, header = TRUE, stringsAsFactors = FALSE),
+      read_input_file(metadata_file, file_type = file_type, header = TRUE, stringsAsFactors = FALSE),
       error = function(e) {
         warning(paste("Warning: Error loading metadata file '", metadata_file, "': ", e$message, ". Proceeding without group-specific analysis.", sep = ""))
         return(NULL)
@@ -213,21 +204,18 @@ construct_pathway_metabolite_network <- function(
 
   # Convert pathway abundance to relative values (SAMPLE-WISE normalization)
   message("  Converting pathway abundance to relative values (sample-wise) using dplyr syntax...")
-  pathway_abun_temp_tibble <- pathway_abun_filtered_by_samples %>%
-    tibble::rownames_to_column(var = "FunctionID")
+  pathway_abun_temp_tibble <- tibble::rownames_to_column(pathway_abun_filtered_by_samples, var = "FunctionID")
 
-  relative_abundance_tibble <- pathway_abun_temp_tibble %>%
-    mutate(across(-FunctionID, ~ {
-      col_sum <- sum(., na.rm = TRUE)
-      if (col_sum == 0) {
-        0
-      } else {
-        . / col_sum
-      }
-    }, .names = "{col}"))
+  relative_abundance_tibble <- dplyr::mutate(pathway_abun_temp_tibble, dplyr::across(-FunctionID, ~ {
+    col_sum <- sum(., na.rm = TRUE)
+    if (col_sum == 0) {
+      0
+    } else {
+      . / col_sum
+    }
+  }, .names = "{col}"))
 
-  pathway_abun_relative <- relative_abundance_tibble %>%
-    tibble::column_to_rownames(var = "FunctionID")
+  pathway_abun_relative <- tibble::column_to_rownames(relative_abundance_tibble, var = "FunctionID")
 
   pathway_abun_relative[is.na(pathway_abun_filtered_by_samples)] <- NA
   message("  Pathway abundance converted to relative values.")
@@ -237,7 +225,7 @@ construct_pathway_metabolite_network <- function(
   if (!is.null(gsea_results_file) && file.exists(gsea_results_file)) { # Check file existence again before loading
     message("  Filtering normalized pathways based on GSEA results...")
     gsea_results_df <- tryCatch(
-      read.csv(gsea_results_file, header = TRUE, stringsAsFactors = FALSE),
+      read_input_file(gsea_results_file, file_type = file_type, header = TRUE, stringsAsFactors = FALSE),
       error = function(e) {
         stop(paste("Error loading GSEA results file '", gsea_results_file, "': ", e$message, sep = ""))
       }
@@ -327,7 +315,7 @@ construct_pathway_metabolite_network <- function(
         vec_met <- met_data_group[, met_name]
 
         # Calculate number of complete observations for this specific pair
-        valid_obs_count <- sum(complete.cases(vec_path, vec_met))
+        valid_obs_count <- sum(stats::complete.cases(vec_path, vec_met))
 
         # Only perform cor.test if there are at least 3 valid pairs
         if (valid_obs_count >= 3) {
@@ -357,7 +345,7 @@ construct_pathway_metabolite_network <- function(
 
     if (length(results_list_for_group) == 0) {
       message("    No valid pathway-metabolite correlations found for group '", current_group, "'. Skipping output for this group.")
-      next # Skip to next group if no results
+      next
     }
 
     # Combine all results for the current group into a single data frame
@@ -370,16 +358,13 @@ construct_pathway_metabolite_network <- function(
     message("  Applying filters for group '", current_group, "'...")
 
     # Filter by absolute correlation coefficient first
-    combined_results_filtered <- combined_results %>%
-      filter(abs(Correlation) >= corr_cutoff)
+    combined_results_filtered <- dplyr::filter(combined_results, abs(Correlation) >= corr_cutoff)
 
     if (filter_by == "p_value") {
-      combined_results_filtered <- combined_results_filtered %>%
-        filter(P_value <= p_value_cutoff)
+      combined_results_filtered <- dplyr::filter(combined_results_filtered, P_value <= p_value_cutoff)
       message("  Filtered by p-value <= ", p_value_cutoff)
     } else if (filter_by == "q_value") {
-      combined_results_filtered <- combined_results_filtered %>%
-        filter(Q_value <= q_value_cutoff)
+      combined_results_filtered <- dplyr::filter(combined_results_filtered, Q_value <= q_value_cutoff)
       message("  Filtered by q-value <= ", q_value_cutoff, " (", q_adjust_method, " correction)")
     }
 

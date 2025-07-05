@@ -9,24 +9,27 @@ construct_microbe_pathway_network(
   metadata_file,
   taxonomy_file,
   output_file,
+  file_type = c("csv", "tsv"),
   filtering = c("unfiltered", "mean", "median", "top10\%", "top25\%", "top50\%",
     "top75\%")
 )
 }
 \arguments{
-\item{contrib_file}{A character string specifying the path to the CSV file
-containing microbial contribution data. Expected columns include 'SampleID',
-'FeatureID', 'FunctionID', and 'taxon_function_abun'.}
+\item{contrib_file}{A character string specifying the path to the contribution data file.
+Expected columns include 'SampleID', 'FeatureID', 'FunctionID', and 'taxon_function_abun'.}
 
-\item{metadata_file}{A character string specifying the path to the CSV file
-containing sample metadata. Expected columns include 'SampleID' and optionally 'class'.}
+\item{metadata_file}{A character string specifying the path to the sample metadata file.
+Expected columns include 'SampleID' and optionally 'class'.}
 
-\item{taxonomy_file}{A character string specifying the path to the CSV file
-containing taxonomy data. Expected columns include 'FeatureID' and 'TaxonID'.}
+\item{taxonomy_file}{A character string specifying the path to the taxonomy data file.
+Expected columns include 'FeatureID' and 'TaxonID'.}
 
 \item{output_file}{A character string specifying the path to the directory
 where the output CSV files will be saved. The directory will be created
 if it does not exist.}
+
+\item{file_type}{A character string indicating the type of input files.
+Must be "csv" (for comma-separated) or "tsv" (for tab-separated).}
 
 \item{filtering}{A character string specifying the filtering method to apply.
 Must be one of "unfiltered", "mean", "median", "top10%", "top25%", "top50%",
@@ -43,7 +46,7 @@ to focus on the most significant contributions.
 }
 \details{
 The function performs several key steps:
-1. Loads input CSV files (contribution, metadata, taxonomy).
+1. Loads input CSV/TSV files (contribution, metadata, taxonomy).
 2. Handles missing 'class' column in metadata by assigning a default 'all' class.
 3. Merges the datasets based on SampleID and FeatureID.
 4. Aggregates taxon-function abundance per class.

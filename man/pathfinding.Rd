@@ -8,12 +8,13 @@ pathfinding(
   multi_layered_network_file,
   source_node,
   target_node,
-  output_directory
+  output_directory,
+  file_type = c("csv", "tsv")
 )
 }
 \arguments{
 \item{multi_layered_network_file}{A character string specifying the path to the
-CSV file containing the integrated multi-layered network data (e.g., output
+integrated multi-layered network data file (e.g., output
 from `construct_multi_layered_network`). Expected columns: 'Feature1',
 'Feature2', 'Edge_Score' (numeric), and 'Edge_Type'.}
 
@@ -26,6 +27,9 @@ for pathfinding. This node must exist in the network.}
 \item{output_directory}{A character string specifying the path to the directory
 where the shortest path results will be saved as a CSV file. The directory
 will be created if it does not exist.}
+
+\item{file_type}{A character string indicating the type of input file.
+Must be "csv" (for comma-separated) or "tsv" (for tab-separated).}
 }
 \value{
 The function's primary output is a CSV file saved
@@ -35,9 +39,7 @@ The function's primary output is a CSV file saved
 }
 \description{
 This function identifies the shortest path between a specified source node
-and a target node within an integrated multi-layered network. It constructs
-an `igraph` object from the network data and uses Dijkstra's algorithm
-with transformed edge weights to find the optimal path.
+and a target node within a multi-layered network using Dijkstra's algorithm.
 }
 \details{
 The edge weights are transformed from `Edge_Score` as follows:

@@ -5,8 +5,9 @@
 #' of taxa to specific functions. It supports various filtering options
 #' to focus on the most significant contributions.
 #'
+#' @details
 #' The function performs several key steps:
-#' 1. Loads input CSV files (contribution, metadata, taxonomy).
+#' 1. Loads input CSV/TSV files (contribution, metadata, taxonomy).
 #' 2. Handles missing 'class' column in metadata by assigning a default 'all' class.
 #' 3. Merges the datasets based on SampleID and FeatureID.
 #' 4. Aggregates taxon-function abundance per class.
@@ -15,39 +16,31 @@
 #'    relative contribution.
 #' 7. Saves the processed network data as a CSV file for each class.
 #'
-#' @param contrib_file A character string specifying the path to the CSV file
-#'   containing microbial contribution data. Expected columns include 'SampleID',
-#'   'FeatureID', 'FunctionID', and 'taxon_function_abun'.
-#' @param metadata_file A character string specifying the path to the CSV file
-#'   containing sample metadata. Expected columns include 'SampleID' and optionally 'class'.
-#' @param taxonomy_file A character string specifying the path to the CSV file
-#'   containing taxonomy data. Expected columns include 'FeatureID' and 'TaxonID'.
+#' @param contrib_file A character string specifying the path to the contribution data file.
+#'   Expected columns include 'SampleID', 'FeatureID', 'FunctionID', and 'taxon_function_abun'.
+#' @param metadata_file A character string specifying the path to the sample metadata file.
+#'   Expected columns include 'SampleID' and optionally 'class'.
+#' @param taxonomy_file A character string specifying the path to the taxonomy data file.
+#'   Expected columns include 'FeatureID' and 'TaxonID'.
 #' @param output_file A character string specifying the path to the directory
 #'   where the output CSV files will be saved. The directory will be created
 #'   if it does not exist.
+#' @param file_type A character string indicating the type of input files.
+#'   Must be "csv" (for comma-separated) or "tsv" (for tab-separated).
 #' @param filtering A character string specifying the filtering method to apply.
 #'   Must be one of "unfiltered", "mean", "median", "top10%", "top25%", "top50%",
 #'   or "top75%". "unfiltered" means no filtering is applied.
 #' @return The function’s primary output is CSV files saved to the specified `output_file` directory, one for each unique class.
-#' @importFrom dplyr %>%
-#' @importFrom dplyr select
-#' @importFrom dplyr all_of
-#' @importFrom dplyr filter
-#' @importFrom dplyr group_by
-#' @importFrom dplyr arrange
-#' @importFrom dplyr desc
-#' @importFrom dplyr mutate
-#' @importFrom dplyr row_number
-#' @importFrom dplyr n
-#' @importFrom dplyr ungroup
 #' @export
 construct_microbe_pathway_network <- function(
   contrib_file,
   metadata_file,
   taxonomy_file,
   output_file,
+  file_type = c("csv", "tsv"),
   filtering = c("unfiltered", "mean", "median", "top10%", "top25%", "top50%", "top75%")
 ) {
+  file_type <- match.arg(file_type)
   filtering <- match.arg(filtering)
   message("Starting microbe-pathway network construction with filtering: ", filtering)
 
@@ -61,15 +54,15 @@ construct_microbe_pathway_network <- function(
 
   message("Loading data...")
   contrib <- tryCatch(
-    read.csv(contrib_file, stringsAsFactors = FALSE),
+    read_input_file(contrib_file, file_type = file_type, stringsAsFactors = FALSE),
     error = function(e) stop(paste("Error loading contribution file: ", e$message))
   )
   metadata <- tryCatch(
-    read.csv(metadata_file, stringsAsFactors = FALSE),
+    read_input_file(metadata_file, file_type = file_type, stringsAsFactors = FALSE),
     error = function(e) stop(paste("Error loading metadata file: ", e$message))
   )
   taxonomy <- tryCatch(
-    read.csv(taxonomy_file, stringsAsFactors = FALSE),
+    read_input_file(taxonomy_file, file_type = file_type, stringsAsFactors = FALSE),
     error = function(e) stop(paste("Error loading taxonomy file: ", e$message))
   )
 
@@ -101,7 +94,7 @@ construct_microbe_pathway_network <- function(
   if (!all(cols_to_keep_from_taxonomy %in% colnames(taxonomy))) {
     stop("Missing expected columns in taxonomy file: ", paste(setdiff(cols_to_keep_from_taxonomy, colnames(taxonomy)), collapse = ", "))
   }
-  taxonomy_for_merge <- taxonomy %>% select(all_of(cols_to_keep_from_taxonomy))
+  taxonomy_for_merge <- dplyr::select(taxonomy, dplyr::all_of(cols_to_keep_from_taxonomy))
 
   message("Merging with taxonomy data...")
   merged <- merge(merged, taxonomy_for_merge, by = "FeatureID", all.x = TRUE)
@@ -123,7 +116,7 @@ construct_microbe_pathway_network <- function(
 
   for (current_class in unique_classes_clean) {
     message("\nProcessing class: '", current_class, "'")
-    merged_class <- merged %>% filter(class == current_class)
+    merged_class <- dplyr::filter(merged, class == current_class)
     message("  Dim merged_class: ", paste(dim(merged_class), collapse = "x"))
     if (nrow(merged_class) == 0) next
 
@@ -159,12 +152,21 @@ construct_microbe_pathway_network <- function(
         taxon_function_total_class <- subset(taxon_function_total_class, relative_contribution >= threshold | is.na(threshold))
       } else {
         percent_map <- c("top10%" = 0.10, "top25%" = 0.25, "top50%" = 0.50, "top75%" = 0.75)
-        top_percent <- percent_map[filtering]
-        taxon_function_total_class <- taxon_function_total_class %>%
-          group_by(FunctionID) %>% arrange(desc(relative_contribution)) %>%
-          mutate(rank = row_number(), n_taxa = n(), cutoff = pmax(ceiling(top_percent * n_taxa), 1)) %>%
-          filter(rank <= cutoff) %>%
-          ungroup() %>% select(-rank, -n_taxa, -cutoff)
+        taxon_function_total_class <- dplyr::ungroup(
+          dplyr::filter(
+            dplyr::mutate(
+              dplyr::arrange(
+                dplyr::group_by(taxon_function_total_class, FunctionID),
+                dplyr::desc(relative_contribution)
+              ),
+              rank = dplyr::row_number(),
+              n_taxa = dplyr::n(),
+              cutoff = pmax(ceiling(percent_map[filtering] * dplyr::n()), 1)
+            ),
+            rank <= cutoff
+          )
+        )
+        taxon_function_total_class <- dplyr::select(taxon_function_total_class, -rank, -n_taxa, -cutoff)
       }
       message("  Dim after filtering: ", paste(dim(taxon_function_total_class), collapse = "x"))
       if (nrow(taxon_function_total_class) == 0) {

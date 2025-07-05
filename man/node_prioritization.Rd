@@ -7,6 +7,7 @@
 node_prioritization(
   multi_layered_network_file,
   output_directory,
+  file_type = c("csv", "tsv"),
   time_step_interval = 0.01,
   stabilization_threshold = 1e-04,
   stabilization_window_size = 10,
@@ -15,13 +16,16 @@ node_prioritization(
 }
 \arguments{
 \item{multi_layered_network_file}{A character string specifying the path to the
-CSV file containing the integrated multi-layered network data (e.g., output
+integrated multi-layered network data file (e.g., output
 from `construct_multi_layered_network`). Expected columns: 'Feature1',
 'Feature2', 'Edge_Score' (numeric), and 'Edge_Type'.}
 
 \item{output_directory}{A character string specifying the path to the directory
 where the output CSV files (heat scores, correlation data) and plots (correlation
 plots) will be saved. The directory will be created if it does not exist.}
+
+\item{file_type}{A character string indicating the type of input file.
+Must be "csv" (for comma-separated) or "tsv" (for tab-separated).}
 
 \item{time_step_interval}{A numeric value representing the interval between
 time steps for the heat diffusion simulation (e.g., 0.01).}
@@ -49,10 +53,7 @@ The function's primary output consists of multiple
 \description{
 This function implements Laplacian Heat Diffusion (LHD) algorithm
 on a multi-layered network to prioritize nodes based on their
-influence from specific metabolite seed nodes. It simulates the diffusion
-of "heat" through the network until a stable state is reached, and then
-quantifies each node's heat score. It also generates a plot showing the
-stabilization of the heat diffusion process.
+association from specific metabolite seed nodes.
 }
 \details{
 The process involves:

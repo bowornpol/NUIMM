@@ -1,13 +1,11 @@
 #' Hub identification using Maximal Clique Centrality (MCC) algorithm
 #'
 #' This function identifies hub nodes in a multi-layered network using the
-#' Maximal Clique Centrality (MCC) algorithm, as defined by the formula:
-#' `MCC(v) = sum((|C|-1)!)`, where `C` is a maximal clique containing node `v`,
-#' and `|C|` is the size of the clique. This means the score for each clique
-#' is the factorial of (clique size - 1).
+#' Maximal Clique Centrality (MCC) algorithm.
 #'
+#' @details
 #' The function performs the following steps:
-#' 1. Loads the integrated multi-layered network from the specified CSV file.
+#' 1. Loads the integrated multi-layered network from the specified CSV/TSV file.
 #' 2. Constructs an undirected `igraph` object from the network data.
 #' 3. Finds all maximal cliques within the graph.
 #' 4. Calculates the MCC score for each node:
@@ -21,13 +19,15 @@
 #' 7. Saves the ranked hub identification results to a CSV file.
 #'
 #' @param multi_layered_network_file A character string specifying the path to the
-#'   CSV file containing the integrated multi-layered network data (e.g., output
+#'   integrated multi-layered network data file (e.g., output
 #'   from `construct_multi_layered_network`). Expected columns: 'Feature1' and
 #'   'Feature2'. 'Edge_Score' and 'Edge_Type' are loaded but not directly used
 #'   in the MCC calculation itself (only edge presence matters for cliques).
 #' @param output_directory A character string specifying the path to the directory
 #'   where the hub identification results will be saved as a CSV file.
 #'   The directory will be created if it does not exist.
+#' @param file_type A character string indicating the type of input file.
+#'   Must be "csv" (for comma-separated) or "tsv" (for tab-separated).
 #' @param top_n_hubs An optional integer specifying the number of top hub nodes
 #'   to return. If `NULL` (default), all nodes will be returned, ranked by MCC score.
 #' @return The function's primary output is a CSV file saved
@@ -35,16 +35,14 @@
 #'   and their MCC scores.
 #' @references
 #' Chin CH, Chen SH, Wu HH, Ho CW, Ko MT, Lin CY. cytoHubba: identifying hub objects and sub-networks from complex interactome. BMC systems biology. 2014 Dec;8:1-7.
-#' @importFrom igraph graph_from_data_frame max_cliques V vcount ecount degree
-#' @importFrom dplyr %>% arrange desc
-#' @importFrom tools file_path_sans_ext
-#' @importFrom base factorial
 #' @export
 hub_identification <- function(
   multi_layered_network_file,
   output_directory,
+  file_type = c("csv", "tsv"),
   top_n_hubs = NULL
 ) {
+  file_type <- match.arg(file_type)
   message("Starting hub identification using Maximal Clique Centrality (MCC) algorithm.")
 
   # Create output directory if it doesn't exist
@@ -67,7 +65,7 @@ hub_identification <- function(
     stop("Network file not found: '", multi_layered_network_file, "'")
   }
 
-  network_data <- read.csv(multi_layered_network_file, stringsAsFactors = FALSE)
+  network_data <- read_input_file(multi_layered_network_file, file_type = file_type, stringsAsFactors = FALSE)
   if (!all(required_cols %in% colnames(network_data))) {
     stop("Network file must contain columns: ", paste(required_cols, collapse = ", "))
   }
@@ -77,13 +75,13 @@ hub_identification <- function(
   message("  Creating undirected graph for MCC calculation.")
   # MCC is a structural centrality, typically applied to unweighted, undirected graphs.
   # We only need Feature1 and Feature2 for graph structure.
-  g <- graph_from_data_frame(d = network_data[, required_cols], directed = FALSE)
-  message("  Graph created with ", vcount(g), " nodes and ", ecount(g), " edges.")
+  g <- igraph::graph_from_data_frame(d = network_data[, required_cols], directed = FALSE)
+  message("  Graph created with ", igraph::vcount(g), " nodes and ", igraph::ecount(g), " edges.")
 
   # 3. Find all maximal cliques
   message("\n2. Finding all maximal cliques. This may take a while for large or dense networks...")
   cliques <- tryCatch(
-    max_cliques(g),
+    igraph::max_cliques(g),
     error = function(e) {
       stop(paste("Error finding maximal cliques: ", e$message, ". This can be computationally intensive for large graphs.", sep = ""))
     }
@@ -93,7 +91,7 @@ hub_identification <- function(
   # 4. Calculate MCC scores for each node based on the provided formula
   message("\n3. Calculating MCC scores for each node.")
   # Initialize MCC scores to 0 for all nodes
-  mcc_scores <- setNames(numeric(vcount(g)), V(g)$name)
+  mcc_scores <- setNames(numeric(igraph::vcount(g)), igraph::V(g)$name)
 
   # Sum (clique_size - 1)! for all maximal cliques of size >= 3
   for (clique_nodes_indices in cliques) {
@@ -101,15 +99,15 @@ hub_identification <- function(
     if (clique_size >= 3) { # Only cliques of size 3 or more contribute to the sum for the primary formula
       clique_score <- factorial(clique_size - 1)
       for (node_index in clique_nodes_indices) {
-        node_name <- V(g)$name[node_index]
+        node_name <- igraph::V(g)$name[node_index]
         mcc_scores[node_name] <- mcc_scores[node_name] + clique_score
       }
     }
   }
 
   # Apply the special case: if MCC is 0 (from cliques >=3) but degree > 0, MCC = degree
-  node_degrees <- degree(g)
-  for (node_name in V(g)$name) {
+  node_degrees <- igraph::degree(g)
+  for (node_name in igraph::V(g)$name) {
     if (mcc_scores[node_name] == 0 && node_degrees[node_name] > 0) {
       mcc_scores[node_name] <- node_degrees[node_name]
       message("  Node '", node_name, "' not in cliques of size >=3; MCC set to its degree (", node_degrees[node_name], ").")
@@ -119,12 +117,14 @@ hub_identification <- function(
 
   # 5. Create a data frame of results and rank
   message("\n4. Ranking nodes by MCC score.")
-  hub_results_df <- data.frame(
-    Node = names(mcc_scores),
-    MCC_Score = mcc_scores,
-    stringsAsFactors = FALSE
-  ) %>%
-    arrange(desc(MCC_Score)) # Sort in descending order of MCC score
+  hub_results_df <- dplyr::arrange(
+    data.frame(
+      Node = names(mcc_scores),
+      MCC_Score = mcc_scores,
+      stringsAsFactors = FALSE
+    ),
+    dplyr::desc(MCC_Score) # Sort in descending order of MCC score
+  )
 
   # 6. Apply top_n_hubs filter if specified
   if (!is.null(top_n_hubs) && is.numeric(top_n_hubs) && top_n_hubs > 0) {

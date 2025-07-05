@@ -9,33 +9,37 @@ construct_multi_layered_network(
   microbe_pathway_file,
   pathway_jaccard_file,
   pathway_metabolite_file,
-  output_directory
+  output_directory,
+  file_type = c("csv", "tsv")
 )
 }
 \arguments{
 \item{gsea_results_file}{A character string specifying the path to the
-GSEA results CSV file (e.g., from `construct_pathway_pathway_network`).
+GSEA results file (e.g., from `construct_pathway_pathway_network`).
 This file is crucial for defining the set of pathways to be included
 in the multi-layered network. Must contain an 'ID' column for pathways.}
 
 \item{microbe_pathway_file}{A character string specifying the path to the
-Microbe-Pathway network CSV file (e.g., from `construct_microbe_pathway_network`).
+Microbe-Pathway network file (e.g., from `construct_microbe_pathway_network`).
 Expected columns: 'TaxonID', 'FunctionID', 'relative_contribution'.
 If the file is not found or invalid, this layer will be skipped.}
 
 \item{pathway_jaccard_file}{A character string specifying the path to the
-Pathway-Pathway Jaccard index CSV file (e.g., from `construct_pathway_pathway_network`).
+Pathway-Pathway Jaccard index file (e.g., from `construct_pathway_pathway_network`).
 Expected columns: 'FunctionID_1', 'FunctionID_2', 'jaccard_index'.
 If the file is not found or invalid, this layer will be skipped.}
 
 \item{pathway_metabolite_file}{A character string specifying the path to the
-Pathway-Metabolite network CSV file (e.g., from `construct_pathway_metabolite_network`).
+Pathway-Metabolite network file (e.g., from `construct_pathway_metabolite_network`).
 Expected columns: 'FunctionID', 'MetaboliteID', 'Correlation'.
 If the file is not found or invalid, this layer will be skipped.}
 
 \item{output_directory}{A character string specifying the path to the directory
 where the final integrated multi-layered network CSV file will be saved.
 The directory will be created if it does not exist.}
+
+\item{file_type}{A character string indicating the type of input files.
+Must be "csv" (for comma-separated) or "tsv" (for tab-separated).}
 }
 \value{
 The function's primary output is a single CSV file

@@ -7,12 +7,13 @@
 hub_identification(
   multi_layered_network_file,
   output_directory,
+  file_type = c("csv", "tsv"),
   top_n_hubs = NULL
 )
 }
 \arguments{
 \item{multi_layered_network_file}{A character string specifying the path to the
-CSV file containing the integrated multi-layered network data (e.g., output
+integrated multi-layered network data file (e.g., output
 from `construct_multi_layered_network`). Expected columns: 'Feature1' and
 'Feature2'. 'Edge_Score' and 'Edge_Type' are loaded but not directly used
 in the MCC calculation itself (only edge presence matters for cliques).}
@@ -20,6 +21,9 @@ in the MCC calculation itself (only edge presence matters for cliques).}
 \item{output_directory}{A character string specifying the path to the directory
 where the hub identification results will be saved as a CSV file.
 The directory will be created if it does not exist.}
+
+\item{file_type}{A character string indicating the type of input file.
+Must be "csv" (for comma-separated) or "tsv" (for tab-separated).}
 
 \item{top_n_hubs}{An optional integer specifying the number of top hub nodes
 to return. If `NULL` (default), all nodes will be returned, ranked by MCC score.}
@@ -31,14 +35,11 @@ The function's primary output is a CSV file saved
 }
 \description{
 This function identifies hub nodes in a multi-layered network using the
-Maximal Clique Centrality (MCC) algorithm, as defined by the formula:
-`MCC(v) = sum((|C|-1)!)`, where `C` is a maximal clique containing node `v`,
-and `|C|` is the size of the clique. This means the score for each clique
-is the factorial of (clique size - 1).
+Maximal Clique Centrality (MCC) algorithm.
 }
 \details{
 The function performs the following steps:
-1. Loads the integrated multi-layered network from the specified CSV file.
+1. Loads the integrated multi-layered network from the specified CSV/TSV file.
 2. Constructs an undirected `igraph` object from the network data.
 3. Finds all maximal cliques within the graph.
 4. Calculates the MCC score for each node:

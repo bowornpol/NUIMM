@@ -10,6 +10,7 @@ construct_pathway_metabolite_network(
   gsea_results_file,
   metadata_file,
   output_file,
+  file_type = c("csv", "tsv"),
   correlation_method = c("spearman", "pearson"),
   filter_by = c("none", "p_value", "q_value"),
   corr_cutoff,
@@ -20,25 +21,28 @@ construct_pathway_metabolite_network(
 }
 \arguments{
 \item{pathway_abundance_file}{A character string specifying the path to the
-CSV file containing pathway abundance data. Expected: Pathways as rows,
+pathway abundance data file. Expected: Pathways as rows,
 samples as columns, with the first column being pathway IDs.}
 
 \item{metabolite_concentration_file}{A character string specifying the path
-to the CSV file containing metabolite concentration data. Expected: Samples
+to the metabolite concentration data file. Expected: Samples
 as rows, metabolites as columns, with the first column being sample IDs.}
 
 \item{gsea_results_file}{An optional character string specifying the path
-to a GSEA results CSV file (e.g., from `construct_pathway_pathway_network`).
+to a GSEA results file (e.g., from `construct_pathway_pathway_network`).
 If provided, pathways will be filtered to those present in this file, and
 the filename might influence group processing. Set to `NULL` if not used.}
 
 \item{metadata_file}{An optional character string specifying the path to the
-CSV file containing sample metadata. Must include 'SampleID' and 'class'
+sample metadata file. Must include 'SampleID' and 'class'
 columns if provided. If `NULL`, all samples are treated as a single 'overall' group.}
 
 \item{output_file}{A character string specifying the path to the directory
 where the output CSV files (correlation results) will be saved.
 The directory will be created if it does not exist.}
+
+\item{file_type}{A character string indicating the type of input files.
+Must be "csv" (for comma-separated) or "tsv" (for tab-separated).}
 
 \item{correlation_method}{A character string specifying the correlation method.
 Must be "spearman" or "pearson".}
@@ -72,19 +76,11 @@ statistical significance. It supports both Spearman and Pearson correlation
 methods and various p-value/q-value adjustment options.
 }
 \details{
-The function performs the following key steps:
-1. Loads pathway abundance, metabolite concentration, and optional GSEA results
-   and metadata files.
-2. Prepares data by aligning samples across datasets and converting pathway
-   abundances to relative values.
-3. Optionally filters pathways based on identifiers found in a provided GSEA
-   results file.
-4. Determines groups for correlation analysis based on metadata, with priority
-   given to a specific group implied by the GSEA results filename if provided.
-5. Performs pairwise correlations between pathways and metabolites for each
-   identified group using `stats::cor.test`.
-6. Calculates adjusted p-values (q-values) for all correlations within a group.
-7. Filters correlation results based on absolute correlation coefficient,
-   p-value, or q-value cutoffs.
-8. Saves the filtered correlation results as CSV files for each processed group.
+The edge weights are transformed from `Edge_Score` as follows:
+- If `Edge_Score` is `NA`, weight is `Inf`.
+- If `Edge_Score` is less than 1, weight is `1 / Edge_Score`.
+- If `Edge_Score` is exactly 1, weight is `1 / (Edge_Score + 0.1)` to avoid `1/1=1` which might not be ideal for shortest path.
+- If `Edge_Score` is greater than 1, weight is `Edge_Score`.
+This transformation aims to represent stronger connections (higher `Edge_Score`)
+as shorter paths (lower weights).
 }

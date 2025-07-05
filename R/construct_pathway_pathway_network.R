@@ -6,6 +6,7 @@
 #' enrichment genes of significant pathways. It allows for flexible p-value
 #' adjustment and gene ranking methods.
 #'
+#' @details
 #' The overall workflow includes:
 #' 1. Loading gene abundance, sample metadata, and pathway-to-gene mapping files.
 #' 2. Preparing data for DESeq2, including sample alignment and rounding counts.
@@ -18,17 +19,19 @@
 #' 7. Calculating Jaccard indices between core enrichment gene sets of significant
 #'    pathways within each comparison, saving these overlap results.
 #'
-#' @param abundance_file A character string specifying the path to the CSV file
-#'   containing gene abundance data. The first column should be gene IDs,
+#' @param abundance_file A character string specifying the path to the
+#'   gene abundance data file. The first column should be gene IDs,
 #'   and subsequent columns should be sample counts (integers).
-#' @param metadata_file A character string specifying the path to the CSV file
-#'   containing sample metadata. Must include 'SampleID' and 'class' columns.
-#' @param map_file A character string specifying the path to the CSV file
-#'   containing pathway-to-gene mapping. Expected to be a two-column CSV
+#' @param metadata_file A character string specifying the path to the sample metadata file.
+#'   Must include 'SampleID' and 'class' columns.
+#' @param map_file A character string specifying the path to the
+#'   pathway-to-gene mapping file. Expected to be a two-column CSV/TSV
 #'   where the first column is Pathway ID and the second is Gene ID.
 #' @param output_file A character string specifying the path to the directory
 #'   where output CSV files (GSEA results and Jaccard indices) will be saved.
 #'   The directory will be created if it does not exist.
+#' @param file_type A character string indicating the type of input files.
+#'   Must be "csv" (for comma-separated) or "tsv" (for tab-separated).
 #' @param pvalueCutoff A numeric value specifying the adjusted p-value cutoff
 #'   for determining significance in GSEA results.
 #' @param pAdjustMethod A character string specifying the method for p-value
@@ -40,21 +43,19 @@
 #' @return The function's primary output is CSV files saved
 #'   to the specified `output_file` directory, containing GSEA results and
 #'   pathway Jaccard indices for each comparison.
-#' @importFrom DESeq2 DESeqDataSetFromMatrix DESeq results
-#' @importFrom clusterProfiler GSEA
-#' @importFrom dplyr %>% filter select all_of distinct group_by arrange mutate row_number n ungroup
-#' @importFrom tidyr gather
 #' @export
 construct_pathway_pathway_network <- function(
   abundance_file,
   metadata_file,
   map_file,
   output_file,
+  file_type = c("csv", "tsv"),
   pvalueCutoff,
   pAdjustMethod = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none"),
   rank_by = c("signed_log_pvalue", "log2FoldChange")
 ) {
   # Validate inputs
+  file_type <- match.arg(file_type)
   pAdjustMethod <- match.arg(pAdjustMethod)
   rank_by <- match.arg(rank_by) # Validate new parameter
 
@@ -73,7 +74,7 @@ construct_pathway_pathway_network <- function(
   # 1. Load abundance data from provided file
   message("1. Loading abundance data from: ", abundance_file)
   gene_abundance <- tryCatch(
-    read.csv(abundance_file, header = TRUE, row.names = 1, stringsAsFactors = FALSE),
+    read_input_file(abundance_file, file_type = file_type, header = TRUE, row.names = 1, stringsAsFactors = FALSE),
     error = function(e) {
       stop(paste("Error loading abundance file '", abundance_file, "': ", e$message, sep = ""))
     }
@@ -83,7 +84,7 @@ construct_pathway_pathway_network <- function(
   # 2. Load sample metadata
   message("2. Loading sample metadata from: ", metadata_file)
   metadata <- tryCatch(
-    read.csv(metadata_file, header = TRUE, stringsAsFactors = FALSE),
+    read_input_file(metadata_file, file_type = file_type, header = TRUE, stringsAsFactors = FALSE),
     error = function(e) {
       stop(paste("Error loading metadata file '", metadata_file, "': ", e$message, sep = ""))
     }
@@ -102,10 +103,7 @@ construct_pathway_pathway_network <- function(
   message("3. Filtering metadata to match samples in abundance data...")
   sample_ids <- colnames(gene_abundance)
   initial_metadata_rows <- nrow(metadata)
-  metadata <- metadata %>% filter(SampleID %in% sample_ids)
-  if (nrow(metadata) == 0) {
-    stop("No matching samples found between abundance data and metadata after filtering.")
-  }
+  metadata <- dplyr::filter(metadata, SampleID %in% sample_ids)
   message("    Filtered metadata. Kept ", nrow(metadata), " out of ", initial_metadata_rows, " samples.")
 
   # 4. Set 'condition' factor from 'class' column
@@ -122,16 +120,16 @@ construct_pathway_pathway_network <- function(
   # 6. Create DESeq2 dataset and run differential expression analysis
   message("6. Creating DESeq2 dataset and running differential expression analysis...")
   dds <- tryCatch(
-    DESeqDataSetFromMatrix(countData = gene_abundance_rounded,
-                           colData = metadata,
-                           design = ~ condition),
+    DESeq2::DESeqDataSetFromMatrix(countData = gene_abundance_rounded, # Explicitly call DESeq2::
+                                   colData = metadata,
+                                   design = ~ condition),
     error = function(e) {
       stop(paste("Error creating DESeq2 dataset: ", e$message, ". Check abundance data (must be integers) and metadata consistency.", sep = ""))
     }
   )
 
   dds <- tryCatch(
-    DESeq(dds),
+    DESeq2::DESeq(dds), # Explicitly call DESeq2::
     error = function(e) {
       stop(paste("Error running DESeq2 analysis: ", e$message, ". This might happen if groups have zero variance, or too few samples.", sep = ""))
     }
@@ -150,17 +148,21 @@ construct_pathway_pathway_network <- function(
   # 8. Load pathway-to-gene mapping and reshape into TERM2GENE format
   message("8. Loading pathway-to-gene mapping from: ", map_file)
   map_raw <- tryCatch(
-    read.csv(map_file, header = FALSE, fill = TRUE, stringsAsFactors = FALSE, skip = 1),
+    read_input_file(map_file, file_type = file_type, header = FALSE, fill = TRUE, stringsAsFactors = FALSE, skip = 1),
     error = function(e) {
-      stop(paste("Error loading map file '", map_file, "': ", e$message, ". Ensure it's a valid CSV.", sep = ""))
+      stop(paste("Error loading map file '", map_file, "': ", e$message, ". Ensure it's a valid CSV/TSV.", sep = ""))
     }
   )
 
-  TERM2GENE <- map_raw %>%
-    gather(key = "temp_col", value = "gene", -V1) %>% # V1 becomes 'term', others become 'gene'
-    select(term = V1, gene) %>%
-    filter(gene != "") %>% # Remove empty gene entries
-    distinct() # Ensure unique pathway-gene pairs
+  TERM2GENE <- dplyr::distinct(
+    dplyr::filter(
+      dplyr::select(
+        tidyr::gather(map_raw, key = "temp_col", value = "gene", -V1),
+        term = V1, gene
+      ),
+      gene != ""
+    )
+  )
 
   if (nrow(TERM2GENE) == 0) {
     stop("No valid pathway-gene mappings found after processing '", map_file, "'. Check file format.")
@@ -179,7 +181,7 @@ construct_pathway_pathway_network <- function(
     message("    Processing comparison (", i, "/", length(comparisons), "): ", cond2, " vs ", cond1)
 
     # Get DESeq2 results for contrast cond2 vs cond1
-    res <- results(dds, contrast = c("condition", cond2, cond1))
+    res <- DESeq2::results(dds, contrast = c("condition", cond2, cond1)) # Explicitly call DESeq2::results()
 
     # Prepare ranked gene list
     ranked_df <- as.data.frame(res[, c("log2FoldChange", "pvalue")])
@@ -208,12 +210,12 @@ construct_pathway_pathway_network <- function(
 
     # Run GSEA using clusterProfiler
     gsea_res <- tryCatch(
-      GSEA(geneList = geneList,
-           TERM2GENE = TERM2GENE,
-           pvalueCutoff = pvalueCutoff,
-           pAdjustMethod = pAdjustMethod,
-           seed = TRUE,
-           verbose = FALSE),
+      clusterProfiler::GSEA(geneList = geneList, # Explicitly call clusterProfiler::GSEA()
+                            TERM2GENE = TERM2GENE,
+                            pvalueCutoff = pvalueCutoff,
+                            pAdjustMethod = pAdjustMethod,
+                            seed = TRUE,
+                            verbose = FALSE),
       error = function(e) {
         warning(paste("GSEA failed for comparison ", comparison_name, ": ", e$message, ". Skipping.", sep = ""))
         return(NULL)
@@ -262,7 +264,7 @@ construct_pathway_pathway_network <- function(
       gsea_df <- gsea_results_list[[key]]
 
       # Filter for pathways with core enrichment genes (i.e., not empty or NA)
-      gsea_df_filtered <- gsea_df %>% filter(!is.na(core_enrichment) & core_enrichment != "")
+      gsea_df_filtered <- dplyr::filter(gsea_df, !is.na(core_enrichment) & core_enrichment != "")
       gene_sets <- strsplit(as.character(gsea_df_filtered$core_enrichment), "/")
       gene_sets <- lapply(gene_sets, function(x) unique(na.omit(x))) # Ensure unique genes per set and remove NAs
 
