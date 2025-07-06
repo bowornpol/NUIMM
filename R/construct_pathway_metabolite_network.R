@@ -6,13 +6,14 @@
 #' methods and various p-value/q-value adjustment options.
 #'
 #' @details
-#' The edge weights are transformed from `Edge_Score` as follows:
-#' - If `Edge_Score` is `NA`, weight is `Inf`.
-#' - If `Edge_Score` is less than 1, weight is `1 / Edge_Score`.
-#' - If `Edge_Score` is exactly 1, weight is `1 / (Edge_Score + 0.1)` to avoid `1/1=1` which might not be ideal for shortest path.
-#' - If `Edge_Score` is greater than 1, weight is `Edge_Score`.
-#' This transformation aims to represent stronger connections (higher `Edge_Score`)
-#' as shorter paths (lower weights).
+#' The function performs the following key steps:
+#' 1.  **Loads Input Data:** Reads pathway abundance, metabolite concentration, and optional metadata files (CSV or TSV).
+#' 2.  **Handles Sample Grouping:** If a `metadata_file` is provided, it groups samples based on the 'class' column. Otherwise, all samples are treated as a single 'overall' group.
+#' 3.  **Applies GSEA Filtering (Optional):** If a `gsea_results_file` is provided, it identifies significant pathways from the GSEA results and filters both pathway abundance and metabolite concentration data to include only samples and pathways relevant to these significant findings.
+#' 4.  **Calculates Correlations:** Computes pairwise correlations between pathway abundances and metabolite concentrations using the specified `correlation_method` (Spearman or Pearson) for each identified sample group.
+#' 5.  **Applies Statistical Filtering:** Adjusts p-values (if `filter_by` is "q_value") and filters correlation results based on the `corr_cutoff`, `p_value_cutoff`, and/or `q_value_cutoff`.
+#' 6.  **Derives Edge Attributes:** For the filtered correlations, it generates `Edge_Score` (based on the absolute correlation coefficient) and `Edge_Type` (indicating positive or negative correlation).
+#' 7.  **Saves Results:** Stores the processed and filtered pathway-metabolite correlation data frames as CSV files in the specified `output_file` directory, with filenames reflecting the correlation method, cutoffs, and relevant GSEA comparison (if applicable).
 #'
 #' @param pathway_abundance_file A character string specifying the path to the
 #'   pathway abundance data file. Expected: Pathways as rows,

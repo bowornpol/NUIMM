@@ -2,7 +2,7 @@
 % Please edit documentation in R/construct_multi_layered_network_full.R
 \name{construct_multi_layered_network_full}
 \alias{construct_multi_layered_network_full}
-\title{Multi-layered network construction (end-to-end integration)}
+\title{Multi-layered network construction (end-to-end)}
 \usage{
 construct_multi_layered_network_full(
   abundance_file,
@@ -25,73 +25,78 @@ construct_multi_layered_network_full(
   pmn_corr_cutoff,
   pmn_p_value_cutoff = NULL,
   pmn_q_value_cutoff = NULL,
-  pmn_q_adjust_method = c("bonferroni", "fdr")
+  pmn_q_adjust_method = NULL
 )
 }
 \arguments{
-\item{abundance_file}{A character string specifying the path to the gene
-abundance data file (input for Pathway-Pathway Network).}
+\item{abundance_file}{A character string specifying the path to the
+gene abundance data file. The first column should be gene IDs,
+and subsequent columns should be sample counts (integers).}
 
-\item{metadata_file}{A character string specifying the path to the sample
-metadata file (input for Pathway-Pathway, Microbe-Pathway, Pathway-Metabolite Networks).}
+\item{metadata_file}{A character string specifying the path to the sample metadata file.
+Must include 'SampleID' and 'class' columns.}
 
-\item{map_file}{A character string specifying the path to the pathway-to-gene
-mapping file (input for Pathway-Pathway Network).}
+\item{map_file}{A character string specifying the path to the
+pathway-to-gene mapping file (e.g., KEGG_pathways_to_KO.csv).}
 
-\item{contrib_file}{A character string specifying the path to the microbial
-contribution data file (input for Microbe-Pathway Network).}
+\item{contrib_file}{A character string specifying the path to the contribution data file
+for microbe-pathway network construction. Expected columns include 'SampleID', 'FeatureID',
+'FunctionID', and 'taxon_function_abun'.}
 
-\item{taxonomy_file}{A character string specifying the path to the taxonomy
-data file (input for Microbe-Pathway Network).}
+\item{taxonomy_file}{A character string specifying the path to the taxonomy data file
+for microbe-pathway network construction. Expected columns include 'FeatureID' and 'TaxonID'.}
 
 \item{pathway_abundance_file}{A character string specifying the path to the
-pathway abundance data file (input for Pathway-Metabolite Network).}
+pathway abundance data file for pathway-metabolite network construction.
+Expected: Pathways as rows, samples as columns, with the first column being pathway IDs.}
 
 \item{metabolite_concentration_file}{A character string specifying the path
-to the metabolite concentration data file (input for Pathway-Metabolite Network).}
+to the metabolite concentration data file for pathway-metabolite network construction.
+Expected: Samples as rows, metabolites as columns, with the first column being sample IDs.}
 
-\item{base_output_directory}{A character string specifying the root directory
-where all intermediate and final output files will be saved. Subdirectories
-will be created within this path (e.g., "pathway_pathway_results",
-"microbe_pathway_results", "pathway_metabolite_results",
-"multi_layered_network_final").}
+\item{base_output_directory}{A character string specifying the base directory
+where all output files will be saved. Subdirectories for each network type
+will be created within this directory.}
 
-\item{file_type}{A character string indicating the type of all input files.
+\item{file_type}{A character string indicating the type of input files for all steps.
 Must be "csv" (for comma-separated) or "tsv" (for tab-separated).}
 
-\item{ppn_pvalueCutoff}{A numeric value: adjusted p-value cutoff for GSEA
-in `construct_pathway_pathway_network`.}
+\item{ppn_pvalueCutoff}{A numeric value specifying the adjusted p-value cutoff
+for determining significance in GSEA results within `construct_pathway_pathway_network`.}
 
-\item{ppn_pAdjustMethod}{A character string: p-value adjustment method for GSEA
-in `construct_pathway_pathway_network`.}
+\item{ppn_pAdjustMethod}{A character string specifying the method for p-value
+adjustment within `construct_pathway_pathway_network`.
+Must be one of "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".}
 
-\item{ppn_rank_by}{A character string: gene ranking method for GSEA
-in `construct_pathway_pathway_network`.}
+\item{ppn_rank_by}{A character string specifying the method to rank genes for GSEA
+within `construct_pathway_pathway_network`.
+Must be either "signed_log_pvalue" or "log2FoldChange".}
 
-\item{mpn_filtering}{A character string: filtering method for
-`construct_microbe_pathway_network`.}
+\item{mpn_filtering}{A character string specifying the filtering method to apply
+for microbe-pathway network construction. Must be one of "unfiltered", "mean",
+"median", "top10%", "top25%", "top50%", or "top75%". "unfiltered" means no filtering is applied.}
 
-\item{pmn_correlation_method}{A character string: correlation method for
-`construct_pathway_metabolite_network`.}
+\item{pmn_correlation_method}{A character string specifying the correlation method
+for pathway-metabolite network construction. Must be "spearman" or "pearson".}
 
-\item{pmn_filter_by}{A character string: how to filter correlations in
-`construct_pathway_metabolite_network`.}
+\item{pmn_filter_by}{A character string specifying how to filter the correlation
+results for pathway-metabolite network construction. Must be "none", "p_value", or "q_value".}
 
-\item{pmn_corr_cutoff}{A numeric value: absolute correlation coefficient cutoff
-for `construct_pathway_metabolite_network`.}
+\item{pmn_corr_cutoff}{A numeric value specifying the absolute correlation
+coefficient cutoff for pathway-metabolite network construction.}
 
-\item{pmn_p_value_cutoff}{A numeric value: p-value cutoff for
-`construct_pathway_metabolite_network` (required if `pmn_filter_by` is "p_value").}
+\item{pmn_p_value_cutoff}{A numeric value specifying the p-value cutoff for
+pathway-metabolite network construction. Required if `pmn_filter_by` is "p_value".}
 
-\item{pmn_q_value_cutoff}{A numeric value: q-value cutoff for
-`construct_pathway_metabolite_network` (required if `pmn_filter_by` is "q_value").}
+\item{pmn_q_value_cutoff}{A numeric value specifying the q-value (adjusted p-value)
+cutoff for pathway-metabolite network construction. Required if `pmn_filter_by` is "q_value".}
 
-\item{pmn_q_adjust_method}{A character string: q-value adjustment method for
-`construct_pathway_metabolite_network`.}
+\item{pmn_q_adjust_method}{A character string specifying the method for q-value
+(p-value) adjustment for pathway-metabolite network construction.
+Must be "bonferroni" or "fdr". Used if `pmn_filter_by` is "q_value".}
 }
 \value{
-A character string representing the path to the final integrated
-  multi-layered network CSV file.
+A character vector of paths to the final integrated multi-layered network CSV files.
 }
 \description{
 This comprehensive function orchestrates the construction of all individual
@@ -113,10 +118,7 @@ The pipeline executes in the following sequential order to respect data dependen
 3.  **Pathway-Metabolite Network Construction (`construct_pathway_metabolite_network`):**
     Computes correlations between pathway abundances and metabolite concentrations,
     optionally filtering results based on GSEA findings and statistical significance.
-4.  **Multi-Layered Network Integration (`construct_multi_layered_network`):**
-    Combines the outputs from the previous three steps into a single, integrated
-    network, filtering based on the GSEA results from Step 1.
-
-All intermediate and final output files are saved within organized subdirectories
-of the specified `base_output_directory`.
+4.  **Multi-Layered Network Construction (`construct_multi_layered_network`):**
+    Integrates the various network layers into a single comprehensive network,
+    using each GSEA result as a filter for generating a distinct multi-layered network.
 }
