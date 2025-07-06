@@ -1,7 +1,7 @@
 Package: NUIM
 Type: Package
 Title: NUIM: Network-based utility for integrating microbiome and metabolome data
-Version: 0.1.0
+Version: 1.0.0
 Author: Bowornpol Nuim [aut, cre]
 Maintainer: Bowornpol Nuim <bowornpol@hotmail.com>
 Description: A comprehensive R package designed for integrating microbiome and metabolome data through multi-layered network analysis. It enables network construction and advanced analyses, including hub identification, pathfinding, and node prioritization, to uncover context-specific biological associations.
