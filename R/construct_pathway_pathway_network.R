@@ -42,7 +42,7 @@
 #'   or "log2FoldChange".
 #' @return The function's primary output is CSV files saved to the specified \code{output_file} directory, containing GSEA results and pathway Jaccard indices for each comparison.
 #' @export
-construct_pathway_pathway_network <- function(
+con.ppn <- function(
   abundance_file,
   metadata_file,
   map_file,
@@ -59,7 +59,7 @@ construct_pathway_pathway_network <- function(
 
   # Call the internal function. It will save files and return their paths.
   # We ignore the returned paths here as per the public function's contract.
-  construct_pathway_pathway_network_internal( # No leading underscore
+  con.ppn.int( # No leading underscore
     abundance_file = abundance_file,
     metadata_file = metadata_file,
     map_file = map_file,

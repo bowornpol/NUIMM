@@ -18,7 +18,7 @@
 #' @param filtering A character string specifying the filtering method to apply.
 #' @return A character vector of paths to the generated microbe-pathway network CSV files.
 #' @keywords internal
-construct_microbe_pathway_network_internal <- function( # No leading underscore
+con.mpn.int <- function( # No leading underscore
   contrib_file,
   metadata_file,
   taxonomy_file,

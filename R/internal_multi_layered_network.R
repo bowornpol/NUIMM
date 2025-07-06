@@ -22,7 +22,7 @@
 #' @param file_type A character string indicating the type of input files.
 #' @return A character string representing the path to the generated multi-layered network CSV file.
 #' @keywords internal
-construct_multi_layered_network_internal <- function(
+con.mln.int <- function(
   gsea_results_file,
   microbe_pathway_file,
   pathway_jaccard_file,

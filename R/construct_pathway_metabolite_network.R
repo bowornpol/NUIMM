@@ -49,7 +49,7 @@
 #'   Used if `filter_by` is "q_value".
 #' @return The function's primary output is CSV files saved to the specified \code{output_file} directory, containing the filtered pathway-metabolite correlation results for each processed group.
 #' @export
-construct_pathway_metabolite_network <- function(
+con.pmn <- function(
   pathway_abundance_file,
   metabolite_concentration_file,
   gsea_results_file,
@@ -71,7 +71,7 @@ construct_pathway_metabolite_network <- function(
 
   # Call the internal function. It will save files and return their paths.
   # We ignore the returned paths here as per the public function's contract.
-  construct_pathway_metabolite_network_internal( # No leading underscore
+  con.pmn.int( # No leading underscore
     pathway_abundance_file = pathway_abundance_file,
     metabolite_concentration_file = metabolite_concentration_file,
     gsea_results_file = gsea_results_file,

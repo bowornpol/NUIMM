@@ -32,7 +32,7 @@
 #'   or "top75%". "unfiltered" means no filtering is applied.
 #' @return The function’s primary output is CSV files saved to the specified \code{output_file} directory, one for each unique class.
 #' @export
-construct_microbe_pathway_network <- function(
+con.mpn <- function(
   contrib_file,
   metadata_file,
   taxonomy_file,
@@ -46,7 +46,7 @@ construct_microbe_pathway_network <- function(
 
   # Call the internal function. It will save files and return their paths.
   # We ignore the returned paths here as per the public function's contract.
-  construct_microbe_pathway_network_internal( # No leading underscore
+  con.mpn.int( # No leading underscore
     contrib_file = contrib_file,
     metadata_file = metadata_file,
     taxonomy_file = taxonomy_file,

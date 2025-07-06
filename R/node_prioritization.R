@@ -51,7 +51,7 @@
 #' @references
 #' Carlin DE, Demchak B, Pratt D, Sage E, Ideker T. Network propagation in the cytoscape cyberinfrastructure. PLoS computational biology. 2017;13(10):e1005598.
 #' @export
-node_prioritization <- function(
+node.prior <- function(
   multi_layered_network_file,
   output_directory,
   file_type = c("csv", "tsv"),

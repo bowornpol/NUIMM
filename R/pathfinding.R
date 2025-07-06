@@ -33,7 +33,7 @@
 #' @references
 #' Dijkstra EW. A note on two problems in connexion with graphs.  Edsger Wybe Dijkstra: his life, work, and legacy2022. p. 287-90.
 #' @export
-pathfinding <- function(
+path.find <- function(
   multi_layered_network_file,
   source_node,
   target_node,

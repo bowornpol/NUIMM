@@ -31,7 +31,7 @@
 #'   (p-value) adjustment.
 #' @return A character vector of paths to the generated pathway-metabolite network CSV files.
 #' @keywords internal
-construct_pathway_metabolite_network_internal <- function(
+con.pmn.int <- function(
   pathway_abundance_file,
   metabolite_concentration_file,
   gsea_results_file,

@@ -36,7 +36,7 @@
 #' @references
 #' Chin CH, Chen SH, Wu HH, Ho CW, Ko MT, Lin CY. cytoHubba: identifying hub objects and sub-networks from complex interactome. BMC systems biology. 2014 Dec;8:1-7.
 #' @export
-hub_identification <- function(
+hub.iden <- function(
   multi_layered_network_file,
   output_directory,
   file_type = c("csv", "tsv"),
