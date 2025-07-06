@@ -31,6 +31,7 @@ construct_multi_layered_network_internal <- function(
   file_type = c("csv", "tsv")
 ) {
   file_type <- match.arg(file_type)
+
   message("Starting internal multi-layered network construction.")
 
   # Create output directory if it doesn't exist
@@ -41,165 +42,196 @@ construct_multi_layered_network_internal <- function(
     message("Output directory already exists: ", output_directory)
   }
 
-  # Determine gsea_suffix and target groups for processing
-  gsea_suffix <- NULL
-  gsea_target_group_from_filename <- NULL
+  # Initialize variables to hold GSEA derived names for filename and filtering
+  gsea_suffix <- NULL # This will store the TARGET group (e.g., "W4")
+  gsea_comparison_group <- NULL # This will store the full comparison (e.g., "W0_vs_W4")
+  gsea_pathways_to_filter <- NULL
 
+  # 1. Load GSEA results and extract relevant pathways and filename components
+  message("\n1. Loading GSEA results and parsing filename...")
   if (!is.null(gsea_results_file)) {
-    # Check if the GSEA file actually exists before trying to parse its name
     if (file.exists(gsea_results_file)) {
       gsea_basename <- tools::file_path_sans_ext(basename(gsea_results_file))
 
-      # Account for additional parameters after the group names
+      # Extract source and target groups, and the full comparison group
       match_result <- stringr::str_match(gsea_basename, "^gsea_results_([^_]+)_vs_([^_]+).*$")
 
-      if (!is.na(match_result[1,1])) { # If the full pattern matches successfully
+      if (!is.na(match_result[1,1])) {
         gsea_source_group <- match_result[1,2]
-        gsea_target_group_from_filename <- match_result[1,3]
-
-        gsea_suffix <- gsea_target_group_from_filename # Use target group as suffix for filename
-        message("Derived GSEA filename suffix: '", gsea_suffix, "' (from GSEA target group)")
-
+        gsea_target_group <- match_result[1,3]
+        gsea_suffix <- gsea_target_group # Assign target group to gsea_suffix
+        gsea_comparison_group <- paste0(gsea_source_group, "_vs_", gsea_target_group) # Assign full comparison group
+        message("  Derived GSEA target group: '", gsea_suffix, "'")
+        message("  Derived GSEA comparison group: '", gsea_comparison_group, "'")
       } else {
         message("  Warning: GSEA results file name '", basename(gsea_results_file), "' did not strictly match the 'gsea_results_SOURCE_vs_TARGET*.csv' pattern for precise group identification. Output filename will use 'overall' suffix.")
       }
+
+      gsea_results_df <- tryCatch(
+        read_input_file(gsea_results_file, file_type = file_type, header = TRUE, stringsAsFactors = FALSE),
+        error = function(e) {
+          stop(paste("Error loading GSEA results file '", gsea_results_file, "': ", e$message, sep = ""))
+        }
+      )
+
+      if ("ID" %in% colnames(gsea_results_df)) {
+        # Filter for significant pathways based on 'p.adjust' and 'NES'
+        # Using a relaxed cutoff for initial pathway filtering for integration
+        # (specific cutoffs for each layer are handled by their respective functions)
+        gsea_pathways_to_filter <- unique(gsea_results_df$ID)
+        message("  Identified ", length(gsea_pathways_to_filter), " pathways from GSEA results for filtering layers.")
+      } else {
+        warning("GSEA results file must contain an 'ID' column with pathway identifiers. No GSEA pathway filtering will be applied.")
+      }
     } else {
-      message("  Warning: GSEA results file '", gsea_results_file, "' not found. Output filename will use 'overall' suffix.")
+      warning("GSEA results file '", gsea_results_file, "' not found. No GSEA pathway filtering will be applied to layers.")
     }
   } else {
-    message("No GSEA results file provided, defaulting to processing without GSEA-specific group identification.")
+    message("No GSEA results file provided. No GSEA pathway filtering will be applied to layers.")
   }
-
-  # 1. Load GSEA results to identify all pathways to be included
-  message("\n1. Identifying pathways from GSEA results for filtering...")
-  if (!file.exists(gsea_results_file)) {
-    stop("GSEA results file not found: '", gsea_results_file, "'. Cannot proceed.")
-  }
-
-  gsea_df <- tryCatch(
-    read_input_file(gsea_results_file, file_type = file_type, stringsAsFactors = FALSE),
-    error = function(e) {
-      stop(paste("Error reading GSEA results file '", gsea_results_file, "': ", e$message, sep = ""))
-    }
-  )
-
-  if (!"ID" %in% colnames(gsea_df)) {
-    stop("GSEA results file must contain an 'ID' column for pathways.")
-  }
-
-  pathways_to_integrate_set <- unique(as.character(gsea_df$ID))
-
-  if (length(pathways_to_integrate_set) == 0) {
-    stop("No pathways identified from GSEA results '", gsea_results_file, "'. Cannot construct multi-layered network.")
-  }
-  message("    Identified ", length(pathways_to_integrate_set), " unique pathways from GSEA results for integration.")
 
   all_network_edges <- list()
 
-  # 2. Load and process Microbe-Pathway Network edges
-  message("\n2. Processing Microbe-Pathway network edges...")
+  # 2. Process Microbe-Pathway Network
+  message("\n2. Processing Microbe-Pathway Network...")
   if (!is.null(microbe_pathway_file) && file.exists(microbe_pathway_file)) {
+    message("  Loading Microbe-Pathway file: ", microbe_pathway_file)
     mp_df <- tryCatch(
-      read_input_file(microbe_pathway_file, file_type = file_type, stringsAsFactors = FALSE),
+      read_input_file(microbe_pathway_file, file_type = file_type, header = TRUE, stringsAsFactors = FALSE),
       error = function(e) {
-        warning(paste("Error reading Microbe-Pathway file '", basename(microbe_pathway_file), "': ", e$message, ". Skipping this layer.", sep = ""))
+        warning(paste("Error loading Microbe-Pathway file '", microbe_pathway_file, "': ", e$message, ". Skipping this layer.", sep = ""))
         return(NULL)
       }
     )
+    if (!is.null(mp_df)) {
+      message("  Loaded Microbe-Pathway network. Edges: ", nrow(mp_df))
 
-    if (!is.null(mp_df) && all(c("TaxonID", "FunctionID", "relative_contribution") %in% colnames(mp_df))) {
-      # Filter by pathways identified from GSEA files (FunctionID must be a GSEA pathway)
-      mp_filtered <- dplyr::mutate(
-        dplyr::select(
-          dplyr::filter(mp_df, FunctionID %in% pathways_to_integrate_set),
-          Feature1 = TaxonID,
-          Feature2 = FunctionID,
-          edge_score = relative_contribution # Changed from Edge_Score
-        ),
-        edge_type = "Microbe-Pathway" # Changed from Edge_Type
-      )
-      if (nrow(mp_filtered) > 0) {
-        all_network_edges[[length(all_network_edges) + 1]] <- mp_filtered
-        message("    Added ", nrow(mp_filtered), " microbe-pathway edges from ", basename(microbe_pathway_file), ".")
+      # Ensure expected columns are present
+      required_mp_cols <- c("TaxonID", "FunctionID", "relative_contribution")
+      if (!all(required_mp_cols %in% colnames(mp_df))) {
+        warning("Microbe-Pathway file missing required columns (TaxonID, FunctionID, relative_contribution). Skipping this layer.")
+        mp_df <- NULL
       } else {
-        message("    No relevant microbe-pathway edges found in ", basename(microbe_pathway_file), " after filtering by GSEA pathways.")
+        # Filter by GSEA pathways if available
+        if (!is.null(gsea_pathways_to_filter)) {
+          initial_rows <- nrow(mp_df)
+          mp_df <- dplyr::filter(mp_df, FunctionID %in% gsea_pathways_to_filter)
+          message("    Filtered Microbe-Pathway edges to ", nrow(mp_df), " (from ", initial_rows, " initial) based on GSEA pathways.")
+        }
+
+        if (nrow(mp_df) > 0) {
+          # Standardize column names
+          mp_df_standardized <- dplyr::select(mp_df,
+                                              Feature1 = TaxonID,
+                                              Feature2 = FunctionID,
+                                              edge_score = relative_contribution
+          )
+          mp_df_standardized$edge_type <- "Microbe-Pathway"
+          all_network_edges[[length(all_network_edges) + 1]] <- mp_df_standardized
+          message("  Microbe-Pathway network added to collection.")
+        } else {
+          message("  No Microbe-Pathway edges remaining after filtering. Skipping this layer.")
+        }
       }
     } else {
-      warning("    Microbe-Pathway file '", basename(microbe_pathway_file), "' missing required columns ('TaxonID', 'FunctionID', 'relative_contribution') or is empty. Skipping this layer.")
+      message("  Microbe-Pathway network file not provided or not found: '", microbe_pathway_file, "'. Skipping this layer.")
     }
   } else {
-    message("    Microbe-Pathway network file not provided or not found: '", microbe_pathway_file, "'. Skipping this layer.")
+    message("  Microbe-Pathway network file not provided or not found: '", microbe_pathway_file, "'. Skipping this layer.")
   }
 
-
-  # 3. Load and process Pathway-Pathway Network edges
-  message("\n3. Processing Pathway-Pathway network edges...")
+  # 3. Process Pathway-Pathway Network (Jaccard Index)
+  message("\n3. Processing Pathway-Pathway Network (Jaccard Index)...")
   if (!is.null(pathway_jaccard_file) && file.exists(pathway_jaccard_file)) {
-    pp_df <- tryCatch(
-      read_input_file(pathway_jaccard_file, file_type = file_type, stringsAsFactors = FALSE),
+    message("  Loading Pathway-Pathway Jaccard file: ", pathway_jaccard_file)
+    pj_df <- tryCatch(
+      read_input_file(pathway_jaccard_file, file_type = file_type, header = TRUE, stringsAsFactors = FALSE),
       error = function(e) {
-        warning(paste("Error reading Pathway-Pathway file '", basename(pathway_jaccard_file), "': ", e$message, ". Skipping this layer.", sep = ""))
+        warning(paste("Error loading Pathway-Pathway Jaccard file '", pathway_jaccard_file, "': ", e$message, ". Skipping this layer.", sep = ""))
         return(NULL)
       }
     )
+    if (!is.null(pj_df)) {
+      message("  Loaded Pathway-Pathway network. Edges: ", nrow(pj_df))
 
-    if (!is.null(pp_df) && all(c("FunctionID_1", "FunctionID_2", "jaccard_index") %in% colnames(pp_df))) {
-      # Filter by pathways identified from GSEA files (both FunctionID_1 AND FunctionID_2 must be GSEA pathways)
-      pp_filtered <- dplyr::mutate(
-        dplyr::select(
-          dplyr::filter(pp_df, FunctionID_1 %in% pathways_to_integrate_set & FunctionID_2 %in% pathways_to_integrate_set),
-          Feature1 = FunctionID_1,
-          Feature2 = FunctionID_2,
-          edge_score = jaccard_index # Changed from Edge_Score
-        ),
-        edge_type = "Pathway-Pathway" # Changed from Edge_Type
-      )
-      if (nrow(pp_filtered) > 0) {
-        all_network_edges[[length(all_network_edges) + 1]] <- pp_filtered
-        message("    Added ", nrow(pp_filtered), " pathway-pathway edges from ", basename(pathway_jaccard_file), ".")
+      required_pj_cols <- c("FunctionID_1", "FunctionID_2", "jaccard_index")
+      if (!all(required_pj_cols %in% colnames(pj_df))) {
+        warning("Pathway-Pathway Jaccard file missing required columns (FunctionID_1, FunctionID_2, jaccard_index). Skipping this layer.")
+        pj_df <- NULL
       } else {
-        message("    No relevant pathway-pathway edges found in ", basename(pathway_jaccard_file), " after filtering by GSEA pathways.")
+        # Filter by GSEA pathways if available (both ends of the edge)
+        if (!is.null(gsea_pathways_to_filter)) {
+          initial_rows <- nrow(pj_df)
+          pj_df <- dplyr::filter(pj_df, FunctionID_1 %in% gsea_pathways_to_filter & FunctionID_2 %in% gsea_pathways_to_filter)
+          message("    Filtered Pathway-Pathway edges to ", nrow(pj_df), " (from ", initial_rows, " initial) based on GSEA pathways.")
+        }
+
+        if (nrow(pj_df) > 0) {
+          # Standardize column names
+          pj_df_standardized <- dplyr::select(pj_df,
+                                              Feature1 = FunctionID_1,
+                                              Feature2 = FunctionID_2,
+                                              edge_score = jaccard_index
+          )
+          pj_df_standardized$edge_type <- "Pathway-Pathway"
+          all_network_edges[[length(all_network_edges) + 1]] <- pj_df_standardized
+          message("  Pathway-Pathway network added to collection.")
+        } else {
+          message("  No Pathway-Pathway edges remaining after filtering. Skipping this layer.")
+        }
       }
     } else {
-      warning("    Pathway-Pathway file '", basename(pathway_jaccard_file), "' missing required columns ('FunctionID_1', 'FunctionID_2', 'jaccard_index') or is empty. Skipping this layer.")
+      message("  Pathway-Pathway network file not provided or not found: '", pathway_jaccard_file, "'. Skipping this layer.")
     }
   } else {
-    message("    Pathway-Pathway network file not provided or not found: '", pathway_jaccard_file, "'. Skipping this layer.")
+    message("  Pathway-Pathway network file not provided or not found: '", pathway_jaccard_file, "'. Skipping this layer.")
   }
 
-  # 4. Load and process Pathway-Metabolite Network edges
-  message("\n4. Processing Pathway-Metabolite network edges...")
+  # 4. Process Pathway-Metabolite Network
+  message("\n4. Processing Pathway-Metabolite Network...")
   if (!is.null(pathway_metabolite_file) && file.exists(pathway_metabolite_file)) {
+    message("  Loading Pathway-Metabolite file: ", pathway_metabolite_file)
     pm_df <- tryCatch(
-      read_input_file(pathway_metabolite_file, file_type = file_type, stringsAsFactors = FALSE),
+      read_input_file(pathway_metabolite_file, file_type = file_type, header = TRUE, stringsAsFactors = FALSE),
       error = function(e) {
-        warning(paste("Error reading Pathway-Metabolite file '", basename(pathway_metabolite_file), "': ", e$message, ". Skipping this layer.", sep = ""))
+        warning(paste("Error loading Pathway-Metabolite file '", pathway_metabolite_file, "': ", e$message, ". Skipping this layer.", sep = ""))
         return(NULL)
       }
     )
+    if (!is.null(pm_df)) {
+      message("  Loaded Pathway-Metabolite network. Edges: ", nrow(pm_df))
 
-    if (!is.null(pm_df) && all(c("FunctionID", "MetaboliteID", "correlation") %in% colnames(pm_df))) { # Changed from Correlation
-      # Filter by pathways identified from GSEA files (FunctionID must be a GSEA pathway)
-      pm_filtered <- dplyr::mutate(
-        dplyr::select(
-          dplyr::filter(pm_df, FunctionID %in% pathways_to_integrate_set),
-          Feature1 = FunctionID,
-          Feature2 = MetaboliteID,
-          edge_score = correlation # Changed from Edge_Score
-        ),
-        edge_type = "Pathway-Metabolite" # Changed from Edge_Type
-      )
-      if (nrow(pm_filtered) > 0) {
-        all_network_edges[[length(all_network_edges) + 1]] <- pm_filtered
-        message("    Added ", nrow(pm_filtered), " pathway-metabolite edges from ", basename(pathway_metabolite_file), ".")
+      required_pm_cols <- c("FunctionID", "MetaboliteID", "correlation")
+      if (!all(required_pm_cols %in% colnames(pm_df))) {
+        warning("Pathway-Metabolite file missing required columns (FunctionID, MetaboliteID, correlation). Skipping this layer.")
+        pm_df <- NULL
       } else {
-        message("    No relevant pathway-metabolite edges found in ", basename(pathway_metabolite_file), " after filtering by GSEA pathways.")
+        # Filter by GSEA pathways if available
+        if (!is.null(gsea_pathways_to_filter)) {
+          initial_rows <- nrow(pm_df)
+          pm_df <- dplyr::filter(pm_df, FunctionID %in% gsea_pathways_to_filter)
+          message("    Filtered Pathway-Metabolite edges to ", nrow(pm_df), " (from ", initial_rows, " initial) based on GSEA pathways.")
+        }
+
+        if (nrow(pm_df) > 0) {
+          # Standardize column names
+          pm_df_standardized <- dplyr::select(pm_df,
+                                              Feature1 = FunctionID,
+                                              Feature2 = MetaboliteID,
+                                              edge_score = correlation
+          )
+          pm_df_standardized$edge_type <- "Pathway-Metabolite"
+          all_network_edges[[length(all_network_edges) + 1]] <- pm_df_standardized
+          message("  Pathway-Metabolite network added to collection.")
+        } else {
+          message("  No Pathway-Metabolite edges remaining after filtering. Skipping this layer.")
+        }
       }
     } else {
-      warning("    Pathway-Metabolite file '", basename(pathway_metabolite_file), "' missing required columns ('FunctionID', 'MetaboliteID', 'Correlation') or is empty. Skipping this layer.")
+      message("  Pathway-Metabolite network file not provided or not found: '", pathway_metabolite_file, "'. Skipping this layer.")
     }
   } else {
-    message("    Pathway-Metabolite network file not provided or not found: '", pathway_metabolite_file, "'. Skipping this layer.")
+    message("  Pathway-Metabolite network file not provided or not found: '", pathway_metabolite_file, "'. Skipping this layer.")
   }
 
 
@@ -217,16 +249,17 @@ construct_multi_layered_network_internal <- function(
   message("    Total integrated edges: ", nrow(final_network_df))
 
   # 6. Save the final integrated network with a dynamic filename
-  dynamic_output_filename <- if (!is.null(gsea_suffix)) {
-    paste0("multi_layered_network_", gsea_suffix, ".csv")
+  dynamic_output_filename <- if (!is.null(gsea_suffix) && !is.null(gsea_comparison_group)) {
+    # Use the target group and the full comparison group from GSEA
+    paste0("multi_layered_network_", gsea_suffix, "_from_gsea_", gsea_comparison_group, ".csv")
   } else {
-    # Fallback if GSEA suffix could not be determined
+    # Fallback if GSEA suffix or comparison group could not be determined
     paste0("multi_layered_network_overall.csv")
   }
 
   final_output_filepath <- file.path(output_directory, dynamic_output_filename)
   write.csv(final_network_df, final_output_filepath, row.names = FALSE)
-  message("  File saved to: ", final_output_filepath)
-  message("Internal multi-layered network construction complete.")
-  return(final_output_filepath) # Return the path to the generated file
+  message("Internal multi-layered network construction complete. File saved to: ", final_output_filepath)
+
+  return(final_output_filepath)
 }

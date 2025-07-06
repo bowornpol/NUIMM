@@ -291,8 +291,8 @@ construct_pathway_pathway_network_internal <- function( # No leading underscore
 
       if (length(res_list) > 0) {
         jaccard_df <- do.call(rbind, res_list)
-        # Construct full output path for Jaccard results
-        jaccard_output_path <- file.path(output_file, paste0("pathway_jaccard_", key, ".csv"))
+        # Construct full output path for Jaccard results using the new format
+        jaccard_output_path <- file.path(output_file, paste0("pathway_pathway_network_from_gsea_", key, ".csv"))
         write.csv(jaccard_df, jaccard_output_path, row.names = FALSE)
         message("    File saved to: ", jaccard_output_path)
         jaccard_output_paths <- c(jaccard_output_paths, jaccard_output_path) # Store path

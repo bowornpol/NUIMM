@@ -75,8 +75,10 @@ construct_pathway_metabolite_network_internal <- function(
   }
 
   # Determine gsea_suffix for filename and group processing priority
-  gsea_suffix <- NULL
+  gsea_suffix <- NULL # This is used as the group_name_for_file initially, but is just the target group
   gsea_target_group_from_filename <- NULL
+  gsea_source_group <- NULL # This is also extracted but not used for filename directly
+  gsea_comparison_group_for_filename <- NULL # Will store the "W0_vs_W2" part
 
   if (!is.null(gsea_results_file)) {
     # Check if the GSEA file exists before trying to read its name
@@ -87,10 +89,10 @@ construct_pathway_metabolite_network_internal <- function(
       match_result <- stringr::str_match(gsea_basename, "^gsea_results_([^_]+)_vs_([^_]+).*$")
 
       if (!is.na(match_result[1,1])) { # If the full pattern matches successfully
-        gsea_source_group <- match_result[1,2]
-        gsea_target_group_from_filename <- match_result[1,3]
-
-        gsea_suffix <- gsea_target_group_from_filename
+        gsea_source_group <- match_result[1,2] # e.g., W0
+        gsea_target_group_from_filename <- match_result[1,3] # e.g., W2
+        gsea_comparison_group_for_filename <- paste0(gsea_source_group, "_vs_", gsea_target_group_from_filename) # e.g., W0_vs_W2
+        gsea_suffix <- gsea_target_group_from_filename # gsea_suffix now holds the target group
         message("Derived GSEA filename suffix: '", gsea_suffix, "' (from GSEA target group)")
 
       } else {
@@ -316,8 +318,8 @@ construct_pathway_metabolite_network_internal <- function(
             results_list_for_group[[length(results_list_for_group) + 1]] <- data.frame(
               FunctionID = path_name,
               MetaboliteID = met_name,
-              correlation = cor_test_result$estimate, # Changed from Correlation
-              p_value = cor_test_result$p.value,     # Changed from P_value
+              correlation = cor_test_result$estimate,
+              p_value = cor_test_result$p.value,
               stringsAsFactors = FALSE
             )
           }
@@ -334,13 +336,13 @@ construct_pathway_metabolite_network_internal <- function(
     combined_results <- do.call(rbind, results_list_for_group)
 
     # Calculate Q-values using the specified adjustment method for ALL p-values in this group
-    combined_results$q_value <- stats::p.adjust(combined_results$p_value, method = q_adjust_method) # Changed from Q_value
+    combined_results$q_value <- stats::p.adjust(combined_results$p_value, method = q_adjust_method)
 
     # 5. Apply filtering based on user choice (now including q_value)
     message("  Applying filters for group '", current_group, "'...")
 
     # Filter by absolute correlation coefficient first
-    combined_results_filtered <- dplyr::filter(combined_results, abs(correlation) >= corr_cutoff) # Changed from Correlation
+    combined_results_filtered <- dplyr::filter(combined_results, abs(correlation) >= corr_cutoff)
 
     if (filter_by == "p_value") {
       combined_results_filtered <- dplyr::filter(combined_results_filtered, p_value <= p_value_cutoff)
@@ -355,33 +357,25 @@ construct_pathway_metabolite_network_internal <- function(
       next
     }
 
-    combined_results_filtered$group <- current_group # Changed from Group
+    combined_results_filtered$group <- current_group
     all_correlation_results[[current_group]] <- combined_results_filtered
 
     # --- Save results with specific filename based on parameters ---
 
-    # Determine the group name for the filename
-    # Prioritize gsea_suffix if it was successfully extracted and applies to this group
-    group_name_for_file <- current_group
-    if (!is.null(gsea_suffix) && current_group == gsea_suffix) {
-      group_name_for_file <- gsea_suffix
-    }
-    # If current_group is "overall" (meaning no metadata was provided), and gsea_suffix exists,
-    # then use gsea_suffix in the filename. Otherwise, "overall" is correct.
-    if (current_group == "overall" && !is.null(gsea_suffix)) {
-      group_name_for_file <- gsea_suffix
-    }
-
     # Format cutoffs for filename (keeping decimals)
-    # Use formatC to avoid scientific notation for very small numbers, use "f" for fixed
     corr_cutoff_fname <- formatC(corr_cutoff, format = "f", digits = 2)
 
-    # Construct the simplified output filename
+    # Determine the suffix part for the GSEA filename components
+    gsea_filename_part <- ""
+    if (!is.null(gsea_target_group_from_filename) && !is.null(gsea_comparison_group_for_filename)) {
+      gsea_filename_part <- paste0("_", gsea_target_group_from_filename, "_from_gsea_", gsea_comparison_group_for_filename)
+    }
+
     output_filename <- paste0(
       "pathway_metabolite_network_",
-      group_name_for_file, "_",
       correlation_method, "_",
       corr_cutoff_fname,
+      gsea_filename_part, # Add the specific GSEA part here
       ".csv"
     )
 
