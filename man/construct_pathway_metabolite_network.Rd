@@ -22,14 +22,14 @@ construct_pathway_metabolite_network(
 \arguments{
 \item{pathway_abundance_file}{A character string specifying the path to the
 pathway abundance data file. Expected: Pathways as rows,
-samples as columns, with the first column being pathway IDs.}
+samples as columns, with the first column being 'FunctionID'.}
 
 \item{metabolite_concentration_file}{A character string specifying the path
 to the metabolite concentration data file. Expected: Samples
-as rows, metabolites as columns, with the first column being sample IDs.}
+as rows, metabolites as columns, with the first column being SampleID.}
 
 \item{gsea_results_file}{An optional character string specifying the path
-to a GSEA results file (e.g., from `construct_pathway_pathway_network`).
+to a GSEA results file (from `construct_pathway_pathway_network`).
 If provided, pathways will be filtered to those present in this file, and
 the filename might influence group processing. Set to `NULL` if not used.}
 
@@ -65,7 +65,7 @@ cutoff. Required if `filter_by` is "q_value".}
 Used if `filter_by` is "q_value".}
 }
 \value{
-Invisible \code{NULL}. The function's primary output is CSV files saved to the specified \code{output_file} directory, containing the filtered pathway-metabolite correlation results for each processed group.
+The function's primary output is CSV files saved to the specified \code{output_file} directory, containing the filtered pathway-metabolite correlation results for each processed group.
 }
 \description{
 This function calculates correlations between pathway abundances and metabolite

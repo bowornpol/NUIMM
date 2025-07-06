@@ -20,13 +20,13 @@
 #'    pathways within each comparison, saving these overlap results.
 #'
 #' @param abundance_file A character string specifying the path to the
-#'   gene abundance data file. The first column should be gene IDs,
+#'   gene abundance data file. The first column should be Gene IDs,
 #'   and subsequent columns should be sample counts (integers).
 #' @param metadata_file A character string specifying the path to the sample metadata file.
 #'   Must include 'SampleID' and 'class' columns.
 #' @param map_file A character string specifying the path to the
 #'   pathway-to-gene mapping file. Expected to be a two-column CSV/TSV
-#'   where the first column is Pathway ID and the second is Gene ID.
+#'   where the first column 'FunctionID' and all other columns containing the corresponding Gene IDs.
 #' @param output_file A character string specifying the path to the directory
 #'   where output CSV files (GSEA results and Jaccard indices) will be saved.
 #'   The directory will be created if it does not exist.
@@ -40,7 +40,7 @@
 #' @param rank_by A character string specifying the method to rank genes for GSEA.
 #'   Must be either "signed_log_pvalue" (sign of log2FoldChange * -log10(p-value))
 #'   or "log2FoldChange".
-#' @return Invisible \code{NULL}. The function's primary output is CSV files saved to the specified \code{output_file} directory, containing GSEA results and pathway Jaccard indices for each comparison.
+#' @return The function's primary output is CSV files saved to the specified \code{output_file} directory, containing GSEA results and pathway Jaccard indices for each comparison.
 #' @export
 construct_pathway_pathway_network <- function(
   abundance_file,

@@ -36,10 +36,10 @@ Must be one of "unfiltered", "mean", "median", "top10%", "top25%", "top50%",
 or "top75%". "unfiltered" means no filtering is applied.}
 }
 \value{
-The function’s primary output is CSV files saved to the specified `output_file` directory, one for each unique class.
+The function’s primary output is CSV files saved to the specified \code{output_file} directory, one for each unique class.
 }
 \description{
-This function processes microbial contribution, metadata, and taxonomy data
+#' This function processes microbial contribution, metadata, and taxonomy data
 to construct a microbe-pathway network, calculating relative contributions
 of taxa to specific functions. It supports various filtering options
 to focus on the most significant contributions.

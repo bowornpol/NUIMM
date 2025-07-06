@@ -16,34 +16,34 @@
 #'    Pathway-Pathway, Pathway-Metabolite), filtering edges to include only
 #'    connections involving the identified GSEA pathways.
 #' 5. Standardizes the column names for each layer's edges (Feature1, Feature2,
-#'    Edge_Score, Edge_Type).
+#'    edge_score, edge_type).
 #' 6. Combines all collected and filtered network edges into a single data frame.
 #' 7. Saves the final integrated multi-layered network to a CSV file in the
 #'    specified output directory, with a filename dynamically generated based
 #'    on the GSEA target group or a default 'overall' suffix.
 #'
 #' @param gsea_results_file A character string specifying the path to the
-#'   GSEA results file (e.g., from `construct_pathway_pathway_network`).
+#'   GSEA results file (from `construct_pathway_pathway_network`).
 #'   This file is crucial for defining the set of pathways to be included
 #'   in the multi-layered network. Must contain an 'ID' column for pathways.
 #' @param microbe_pathway_file A character string specifying the path to the
-#'   Microbe-Pathway network file (e.g., from `construct_microbe_pathway_network`).
+#'   Microbe-Pathway network file (from `construct_microbe_pathway_network`).
 #'   Expected columns: 'TaxonID', 'FunctionID', 'relative_contribution'.
 #'   If the file is not found or invalid, this layer will be skipped.
 #' @param pathway_jaccard_file A character string specifying the path to the
-#'   Pathway-Pathway Jaccard index file (e.g., from `construct_pathway_pathway_network`).
+#'   Pathway-Pathway Jaccard index file (from `construct_pathway_pathway_network`).
 #'   Expected columns: 'FunctionID_1', 'FunctionID_2', 'jaccard_index'.
 #'   If the file is not found or invalid, this layer will be skipped.
 #' @param pathway_metabolite_file A character string specifying the path to the
-#'   Pathway-Metabolite network file (e.g., from `construct_pathway_metabolite_network`).
-#'   Expected columns: 'FunctionID', 'MetaboliteID', 'Correlation'.
+#'   Pathway-Metabolite network file (from `construct_pathway_metabolite_network`).
+#'   Expected columns: 'FunctionID', 'MetaboliteID', 'correlation'.
 #'   If the file is not found or invalid, this layer will be skipped.
 #' @param output_directory A character string specifying the path to the directory
 #'   where the final integrated multi-layered network CSV file will be saved.
 #'   The directory will be created if it does not exist.
 #' @param file_type A character string indicating the type of input files.
 #'   Must be "csv" (for comma-separated) or "tsv" (for tab-separated).
-#' @return Invisible \code{NULL}. The function's primary output is a single CSV file saved to the specified \code{output_directory}, containing the combined and filtered edges from all integrated network layers.
+#' @return The function's primary output is a single CSV file saved to the specified \code{output_directory}, containing the combined and filtered edges from all integrated network layers.
 #' @export
 construct_multi_layered_network <- function(
   gsea_results_file,

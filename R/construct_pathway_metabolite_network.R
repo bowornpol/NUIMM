@@ -17,12 +17,12 @@
 #'
 #' @param pathway_abundance_file A character string specifying the path to the
 #'   pathway abundance data file. Expected: Pathways as rows,
-#'   samples as columns, with the first column being pathway IDs.
+#'   samples as columns, with the first column being 'FunctionID'.
 #' @param metabolite_concentration_file A character string specifying the path
 #'   to the metabolite concentration data file. Expected: Samples
-#'   as rows, metabolites as columns, with the first column being sample IDs.
+#'   as rows, metabolites as columns, with the first column being SampleID.
 #' @param gsea_results_file An optional character string specifying the path
-#'   to a GSEA results file (e.g., from `construct_pathway_pathway_network`).
+#'   to a GSEA results file (from `construct_pathway_pathway_network`).
 #'   If provided, pathways will be filtered to those present in this file, and
 #'   the filename might influence group processing. Set to `NULL` if not used.
 #' @param metadata_file An optional character string specifying the path to the
@@ -47,7 +47,7 @@
 #' @param q_adjust_method A character string specifying the method for q-value
 #'   (p-value) adjustment. Must be "bonferroni" or "fdr" (False Discovery Rate).
 #'   Used if `filter_by` is "q_value".
-#' @return Invisible \code{NULL}. The function's primary output is CSV files saved to the specified \code{output_file} directory, containing the filtered pathway-metabolite correlation results for each processed group.
+#' @return The function's primary output is CSV files saved to the specified \code{output_file} directory, containing the filtered pathway-metabolite correlation results for each processed group.
 #' @export
 construct_pathway_metabolite_network <- function(
   pathway_abundance_file,

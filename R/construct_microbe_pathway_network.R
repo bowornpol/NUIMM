@@ -1,6 +1,6 @@
 #' Microbe-pathway network construction
 #'
-#' This function processes microbial contribution, metadata, and taxonomy data
+#'#' This function processes microbial contribution, metadata, and taxonomy data
 #' to construct a microbe-pathway network, calculating relative contributions
 #' of taxa to specific functions. It supports various filtering options
 #' to focus on the most significant contributions.
@@ -30,7 +30,7 @@
 #' @param filtering A character string specifying the filtering method to apply.
 #'   Must be one of "unfiltered", "mean", "median", "top10%", "top25%", "top50%",
 #'   or "top75%". "unfiltered" means no filtering is applied.
-#' @return The function’s primary output is CSV files saved to the specified `output_file` directory, one for each unique class.
+#' @return The function’s primary output is CSV files saved to the specified \code{output_file} directory, one for each unique class.
 #' @export
 construct_microbe_pathway_network <- function(
   contrib_file,
