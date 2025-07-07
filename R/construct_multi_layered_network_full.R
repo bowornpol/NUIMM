@@ -1,25 +1,25 @@
 #' Multi-layered network construction (end-to-end)
 #'
-#' This comprehensive function orchestrates the construction of all individual
+#' This comprehensive function coordinates the construction of all individual
 #' network layers (Microbe-Pathway, Pathway-Pathway, Pathway-Metabolite) and
-#' then integrates them into a single, cohesive multi-layered network. It
-#' combines the functionality of `construct_microbe_pathway_network`,
-#' `construct_pathway_pathway_network`, `construct_pathway_metabolite_network`,
-#' and `construct_multi_layered_network` into one convenient, end-to-end call.
+#' then integrates them into a single, multi-layered network. It
+#' combines the functionality of `con_mpn`,
+#' `con_ppn`, `con_pmn`,
+#' and `con_mln` into one convenient, end-to-end call.
 #'
 #' @details
 #' The pipeline executes in the following sequential order to respect data dependencies:
-#' 1.  **Pathway-Pathway Network Construction (`construct_pathway_pathway_network`):**
+#' 1.  **Pathway-Pathway Network Construction:**
 #'     Performs differential expression analysis and Gene Set Enrichment Analysis (GSEA)
 #'     to identify enriched pathways and subsequently computes Jaccard indices
 #'     to quantify overlap between core enrichment genes of significant pathways.
 #'     (This step must run first as its GSEA results are a dependency for other layers).
-#' 2.  **Microbe-Pathway Network Construction (`construct_microbe_pathway_network`):**
+#' 2.  **Microbe-Pathway Network Construction:**
 #'     Calculates the relative contributions of microbial taxa to specific functions.
-#' 3.  **Pathway-Metabolite Network Construction (`construct_pathway_metabolite_network`):**
+#' 3.  **Pathway-Metabolite Network Construction:**
 #'     Computes correlations between pathway abundances and metabolite concentrations,
 #'     optionally filtering results based on GSEA findings and statistical significance.
-#' 4.  **Multi-Layered Network Construction (`construct_multi_layered_network`):**
+#' 4.  **Multi-Layered Network Construction:**
 #'     Integrates the various network layers into a single comprehensive network,
 #'     using each GSEA result as a filter for generating a distinct multi-layered network.
 #'
@@ -72,7 +72,7 @@
 #'   Must be "bonferroni" or "fdr". Used if `pmn_filter_by` is "q_value".
 #' @return A character vector of paths to the final integrated multi-layered network CSV files.
 #' @export
-con.mln.all <- function(
+con_mln_all <- function(
   abundance_file,
   metadata_file,
   map_file,
@@ -124,7 +124,7 @@ con.mln.all <- function(
 
   # --- Step 1: Construct Pathway-Pathway Network ---
   message("\n--- Step 1/4: Constructing Pathway-Pathway Network ---")
-  ppn_results <- con.ppn.int(
+  ppn_results <- con_ppn_int(
     abundance_file = abundance_file,
     metadata_file = metadata_file,
     map_file = map_file,
@@ -159,7 +159,7 @@ con.mln.all <- function(
     # or a specific MPN file should be chosen here based on the GSEA comparison.
     # For now, we assume MPN output is general or chosen outside this loop if GSEA-specific.
     message("\n--- Step 2/4: Constructing Microbe-Pathway Network ---")
-    mpn_output_paths <- con.mpn.int(
+    mpn_output_paths <- con_mpn_int(
       contrib_file = contrib_file,
       metadata_file = metadata_file,
       taxonomy_file = taxonomy_file,
@@ -182,7 +182,7 @@ con.mln.all <- function(
 
     # --- Step 3: Construct Pathway-Metabolite Network ---
     message("\n--- Step 3/4: Constructing Pathway-Metabolite Network ---")
-    pmn_output_paths <- con.pmn.int(
+    pmn_output_paths <- con_pmn_int(
       pathway_abundance_file = pathway_abundance_file,
       metabolite_concentration_file = metabolite_concentration_file,
       gsea_results_file = current_gsea_file, # Use the current GSEA file for filtering
@@ -213,7 +213,7 @@ con.mln.all <- function(
 
     # --- Step 4: Construct Multi-Layered Network (Integrates all previous layers) ---
     message("\n--- Step 4/4: Constructing Multi-Layered Network for current GSEA comparison ---")
-    final_multi_layered_network_path <- con.mln.int( # Call internal version
+    final_multi_layered_network_path <- con_mln_int( # Call internal version
       gsea_results_file = current_gsea_file, # Use the current GSEA file
       microbe_pathway_file = selected_microbe_pathway_file, # Use selected MPN file from Step 2
       pathway_jaccard_file = current_jaccard_file, # Use the current Jaccard file

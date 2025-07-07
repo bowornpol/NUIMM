@@ -6,8 +6,8 @@
 #' and Pathway-Metabolite) into a single comprehensive network. It uses GSEA
 #' results as a central filter to ensure that only relevant pathways and their
 #' associated connections are included in the final integrated network. This is
-#' an internal function primarily used by `construct_multi_layered_network_full`
-#' and wrapped by `construct_multi_layered_network`.
+#' an internal function primarily used by `con_mln_all`
+#' and wrapped by `con_mln`.
 #'
 #' @param gsea_results_file A character string specifying the path to the
 #'   GSEA results file.
@@ -22,7 +22,7 @@
 #' @param file_type A character string indicating the type of input files.
 #' @return A character string representing the path to the generated multi-layered network CSV file.
 #' @keywords internal
-con.mln.int <- function(
+con_mln_int <- function(
   gsea_results_file,
   microbe_pathway_file,
   pathway_jaccard_file,

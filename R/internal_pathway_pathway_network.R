@@ -6,8 +6,8 @@
 #' Gene Set Enrichment Analysis (GSEA) to identify enriched pathways and
 #' subsequently computes Jaccard indices to quantify overlap between core
 #' enrichment genes of significant pathways. This is an internal function
-#' primarily used by `construct_multi_layered_network_full` and wrapped by
-#' `construct_pathway_pathway_network`.
+#' primarily used by `con_mln_all` and wrapped by
+#' `con_ppn`.
 #'
 #' @param abundance_file A character string specifying the path to the
 #'   gene abundance data file.
@@ -28,7 +28,7 @@
 #'     \item{jaccard_paths}{A character vector of paths to the generated Pathway-Pathway Jaccard index CSV files.}
 #'   }
 #' @keywords internal
-con.ppn.int <- function( # No leading underscore
+con_ppn_int <- function( # No leading underscore
   abundance_file,
   metadata_file,
   map_file,

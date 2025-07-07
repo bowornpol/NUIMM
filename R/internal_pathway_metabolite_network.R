@@ -5,8 +5,8 @@
 #' This function calculates correlations between pathway abundances and metabolite
 #' concentrations, optionally filtering results based on GSEA findings and
 #' statistical significance. This is an internal function primarily used by
-#' `construct_multi_layered_network_full` and wrapped by
-#' `construct_pathway_metabolite_network`.
+#' `con_mln_all` and wrapped by
+#' `con_pmn`.
 #'
 #' @param pathway_abundance_file A character string specifying the path to the
 #'   pathway abundance data file.
@@ -31,7 +31,7 @@
 #'   (p-value) adjustment.
 #' @return A character vector of paths to the generated pathway-metabolite network CSV files.
 #' @keywords internal
-con.pmn.int <- function(
+con_pmn_int <- function(
   pathway_abundance_file,
   metabolite_concentration_file,
   gsea_results_file,

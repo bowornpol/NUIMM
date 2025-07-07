@@ -45,7 +45,7 @@
 #'   Must be "csv" (for comma-separated) or "tsv" (for tab-separated).
 #' @return The function's primary output is a single CSV file saved to the specified \code{output_directory}, containing the combined and filtered edges from all integrated network layers.
 #' @export
-con.mln <- function(
+con_mln <- function(
   gsea_results_file,
   microbe_pathway_file,
   pathway_jaccard_file,
@@ -58,7 +58,7 @@ con.mln <- function(
 
   # Call the internal function. It will save files and return their paths.
   # We ignore the returned path here as per the public function's contract.
-  con.mln.int( # No leading underscore
+  con_mln_int( # No leading underscore
     gsea_results_file = gsea_results_file,
     microbe_pathway_file = microbe_pathway_file,
     pathway_jaccard_file = pathway_jaccard_file,

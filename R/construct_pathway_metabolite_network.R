@@ -12,7 +12,7 @@
 #' 3.  **Applies GSEA Filtering (Optional):** If a `gsea_results_file` is provided, it identifies significant pathways from the GSEA results and filters both pathway abundance and metabolite concentration data to include only samples and pathways relevant to these significant findings.
 #' 4.  **Calculates Correlations:** Computes pairwise correlations between pathway abundances and metabolite concentrations using the specified `correlation_method` (Spearman or Pearson) for each identified sample group.
 #' 5.  **Applies Statistical Filtering:** Adjusts p-values (if `filter_by` is "q_value") and filters correlation results based on the `corr_cutoff`, `p_value_cutoff`, and/or `q_value_cutoff`.
-#' 6.  **Derives Edge Attributes:** For the filtered correlations, it generates `Edge_Score` (based on the absolute correlation coefficient) and `Edge_Type` (indicating positive or negative correlation).
+#' 6.  **Derives Edge Attributes:** For the filtered correlations, it generates `edge_score` (based on the absolute correlation coefficient) and `edge_type` (indicating positive or negative correlation).
 #' 7.  **Saves Results:** Stores the processed and filtered pathway-metabolite correlation data frames as CSV files in the specified `output_file` directory, with filenames reflecting the correlation method, cutoffs, and relevant GSEA comparison (if applicable).
 #'
 #' @param pathway_abundance_file A character string specifying the path to the
@@ -49,7 +49,7 @@
 #'   Used if `filter_by` is "q_value".
 #' @return The function's primary output is CSV files saved to the specified \code{output_file} directory, containing the filtered pathway-metabolite correlation results for each processed group.
 #' @export
-con.pmn <- function(
+con_pmn <- function(
   pathway_abundance_file,
   metabolite_concentration_file,
   gsea_results_file,
@@ -71,7 +71,7 @@ con.pmn <- function(
 
   # Call the internal function. It will save files and return their paths.
   # We ignore the returned paths here as per the public function's contract.
-  con.pmn.int( # No leading underscore
+  con_pmn_int( # No leading underscore
     pathway_abundance_file = pathway_abundance_file,
     metabolite_concentration_file = metabolite_concentration_file,
     gsea_results_file = gsea_results_file,

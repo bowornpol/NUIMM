@@ -6,8 +6,8 @@
 #' to construct a microbe-pathway network, calculating relative contributions
 #' of taxa to specific functions. It supports various filtering options
 #' to focus on the most significant contributions. This is an internal function
-#' primarily used by `construct_multi_layered_network_full` and wrapped by
-#' `construct_microbe_pathway_network`.
+#' primarily used by `con_mln_all` and wrapped by
+#' `con_mpn`.
 #'
 #' @param contrib_file A character string specifying the path to the contribution data file.
 #' @param metadata_file A character string specifying the path to the sample metadata file.
@@ -18,7 +18,7 @@
 #' @param filtering A character string specifying the filtering method to apply.
 #' @return A character vector of paths to the generated microbe-pathway network CSV files.
 #' @keywords internal
-con.mpn.int <- function( # No leading underscore
+con_mpn_int <- function( # No leading underscore
   contrib_file,
   metadata_file,
   taxonomy_file,
