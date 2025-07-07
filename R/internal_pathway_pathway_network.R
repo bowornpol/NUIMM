@@ -28,7 +28,7 @@
 #'     \item{jaccard_paths}{A character vector of paths to the generated Pathway-Pathway Jaccard index CSV files.}
 #'   }
 #' @keywords internal
-con_ppn_int <- function( # No leading underscore
+con_ppn_int <- function(
   abundance_file,
   metadata_file,
   map_file,
