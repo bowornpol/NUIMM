@@ -14,28 +14,28 @@ find_path(
 }
 \arguments{
 \item{multi_layered_network_file}{A character string specifying the path to the
-integrated multi-layered network data file (e.g., output
-from `construct_multi_layered_network`). Expected columns: 'Feature1',
-'Feature2', 'edge_score' (numeric), and 'edge_type'.}
+  integrated multi-layered network data file (e.g., output
+  from `construct_multi_layered_network`). Expected columns: 'Feature1',
+  'Feature2', 'edge_score' (numeric), and 'edge_type'.}
 
 \item{source_node}{A character string specifying the name of the starting node
-for pathfinding. This node must exist in the network.}
+  for pathfinding. This node must exist in the network.}
 
 \item{target_node}{A character string specifying the name of the ending node
-for pathfinding. This node must exist in the network.}
+  for pathfinding. This node must exist in the network.}
 
 \item{output_directory}{A character string specifying the path to the directory
-where the shortest path results will be saved as a CSV file. The directory
-will be created if it does not exist.}
+  where the shortest path results will be saved as a CSV file. The directory
+  will be created if it does not exist.}
 
 \item{file_type}{A character string indicating the type of input file.
-Must be "csv" (for comma-separated) or "tsv" (for tab-separated).}
+  Must be "csv" (for comma-separated) or "tsv" (for tab-separated).}
 }
 \value{
 The function's primary output is a CSV file saved
-   to the specified `output_directory`, detailing the edges of the shortest path
-   found between the source and target nodes. If no path is found, `NULL` is returned
-   invisibly and a message is printed.
+  to the specified `output_directory`, detailing the edges of the shortest path
+  found between the source and target nodes. If no path is found, `NULL` is returned
+  invisibly and a message is printed.
 }
 \description{
 This function identifies the shortest path between a specified source node
@@ -46,8 +46,7 @@ The edge weights are transformed from `edge_score` as follows:
 - `edge_score` is first converted to its absolute value to ensure non-negative weights.
 - If the absolute `edge_score` is `NA`, weight is `Inf`.
 - If the absolute `edge_score` is less than 1, weight is `1 / absolute_edge_score`.
-- If the absolute `edge_score` is exactly 1, weight is `1 / (absolute_edge_score + 0.1)` to avoid `1/1=1` which might not be ideal for shortest path.
-- If the absolute `edge_score` is greater than 1, weight is `absolute_edge_score`.
+- If the absolute `edge_score` is exactly 1, weight is `1 / (absolute_edge_score + 0.1)`.
 This transformation aims to represent stronger connections (higher `edge_score`)
 as shorter paths (lower weights), ensuring all weights are non-negative for Dijkstra's algorithm.
 }
