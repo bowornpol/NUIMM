@@ -16,9 +16,9 @@ node_prior(
 }
 \arguments{
 \item{multi_layered_network_file}{A character string specifying the path to the
-integrated multi-layered network data file (e.g., output
-from `construct_multi_layered_network`). Expected columns: 'Feature1',
-'Feature2', 'edge_score' (numeric), and 'edge_type'. # Changed Edge_Score and Edge_Type}
+integrated multi-layered network data file (output
+from `con.mln` or `con.mln.all`). Expected columns: 'Feature1',
+'Feature2', 'edge_score' (numeric), and 'edge_type'.}
 
 \item{output_directory}{A character string specifying the path to the directory
 where the output CSV files (heat scores, correlation data) and plots (correlation
@@ -42,8 +42,7 @@ time steps over which the correlation difference must remain below the
 \item{filter_other_metabolite_edges}{A logical value. If `TRUE`, when a
 metabolite is used as a seed, all other edges connected to *other* metabolite
 nodes (i.e., not the current seed) are excluded from the network for that
-specific diffusion run. This isolates the diffusion to pathways and other
-non-metabolite nodes. If `FALSE`, the full network is used for each seed.}
+specific diffusion run. If `FALSE`, the full network is used for each seed.}
 }
 \value{
 The function's primary output consists of multiple

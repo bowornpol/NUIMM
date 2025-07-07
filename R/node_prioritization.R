@@ -23,9 +23,9 @@
 #'       over time, indicating the stabilization point.
 #'
 #' @param multi_layered_network_file A character string specifying the path to the
-#'    integrated multi-layered network data file (e.g., output
-#'    from `construct_multi_layered_network`). Expected columns: 'Feature1',
-#'    'Feature2', 'edge_score' (numeric), and 'edge_type'. # Changed Edge_Score and Edge_Type
+#'    integrated multi-layered network data file (output
+#'    from `con.mln` or `con.mln.all`). Expected columns: 'Feature1',
+#'    'Feature2', 'edge_score' (numeric), and 'edge_type'.
 #' @param output_directory A character string specifying the path to the directory
 #'    where the output CSV files (heat scores, correlation data) and plots (correlation
 #'    plots) will be saved. The directory will be created if it does not exist.
@@ -43,8 +43,7 @@
 #' @param filter_other_metabolite_edges A logical value. If `TRUE`, when a
 #'    metabolite is used as a seed, all other edges connected to *other* metabolite
 #'    nodes (i.e., not the current seed) are excluded from the network for that
-#'    specific diffusion run. This isolates the diffusion to pathways and other
-#'    non-metabolite nodes. If `FALSE`, the full network is used for each seed.
+#'    specific diffusion run. If `FALSE`, the full network is used for each seed.
 #' @return The function's primary output consists of multiple
 #'    CSV files (heat scores and correlation data) and JPG plots (correlation plots),
 #'    saved to the specified `output_directory`, one set for each metabolite seed node.
@@ -90,14 +89,14 @@ node_prior <- function(
   )
 
   # Validate required columns in combined_data_full (now expecting snake_case)
-  required_cols_network <- c("Feature1", "Feature2", "edge_score", "edge_type") # Changed Edge_Score and Edge_Type
+  required_cols_network <- c("Feature1", "Feature2", "edge_score", "edge_type")
   if (!all(required_cols_network %in% colnames(combined_data_full))) {
     stop(paste("Input network file '", multi_layered_network_file, "' must contain columns: ", paste(required_cols_network, collapse = ", "), ". Please ensure it's the output from Module 2, Step 4.", sep = ""))
   }
 
   # Ensure edge_score is numeric
-  if (!is.numeric(combined_data_full$edge_score)) { # Changed Edge_Score
-    stop("Column 'edge_score' in the input network file must be numeric.") # Changed Edge_Score
+  if (!is.numeric(combined_data_full$edge_score)) {
+    stop("Column 'edge_score' in the input network file must be numeric.")
   }
 
   # 2. Identify all unique metabolite nodes from the FULL network (for looping and for filtering)
@@ -196,8 +195,8 @@ node_prior <- function(
     }
 
     # --- Convert edge_score to absolute value ---
-    current_combined_data$edge_score <- abs(current_combined_data$edge_score) # Changed Edge_Score
-    message("    edge_scores converted to absolute values.") # Changed Edge_Scores
+    current_combined_data$edge_score <- abs(current_combined_data$edge_score)
+    message("    edge_scores converted to absolute values.")
 
     # --- Create graph and Laplacian matrix for the CURRENT network configuration ---
     # This block is now inside the loop, as the network structure changes per seed if filtered
@@ -229,7 +228,7 @@ node_prior <- function(
             dplyr::rowwise(current_combined_data),
             Node_A = min(Feature1, Feature2), Node_B = max(Feature1, Feature2)
           ),
-          Node_A, Node_B, edge_score # Changed Edge_Score
+          Node_A, Node_B, edge_score
         )
       )
     )
@@ -239,12 +238,12 @@ node_prior <- function(
     edge_id_graph <- paste0(graph_edges_for_weighting$Node_A, "_", graph_edges_for_weighting$Node_B)
     edge_id_data <- paste0(current_combined_data_sorted$Node_A, "_", current_combined_data_sorted$Node_B)
 
-    matched_weights <- current_combined_data_sorted$edge_score[match(edge_id_graph, edge_id_data)] # Changed Edge_Score
+    matched_weights <- current_combined_data_sorted$edge_score[match(edge_id_graph, edge_id_data)]
 
     igraph::E(g_current)$weight <- matched_weights
 
     if (any(is.na(igraph::E(g_current)$weight))) {
-      warning("  Some edges in the graph for seed '", seed_metabolite_id, "' could not be matched to an 'edge_score' in the input data. Assigning 0 weight to unmatched edges.") # Changed Edge_Score
+      warning("  Some edges in the graph for seed '", seed_metabolite_id, "' could not be matched to an 'edge_score' in the input data. Assigning 0 weight to unmatched edges.")
       igraph::E(g_current)$weight[is.na(igraph::E(g_current)$weight)] <- 0
     }
 

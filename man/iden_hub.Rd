@@ -13,9 +13,9 @@ iden_hub(
 }
 \arguments{
 \item{multi_layered_network_file}{A character string specifying the path to the
-integrated multi-layered network data file (e.g., output
-from `construct_multi_layered_network`). Expected columns: 'Feature1' and
-'Feature2'. 'Edge_Score' and 'Edge_Type' are loaded but not directly used
+integrated multi-layered network data file (output
+from `con.mln` or `con.mln.all`). Expected columns: 'Feature1' and
+'Feature2'. 'edge_score' and 'edge_type' are loaded but not directly used
 in the MCC calculation itself (only edge presence matters for cliques).}
 
 \item{output_directory}{A character string specifying the path to the directory

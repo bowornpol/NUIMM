@@ -14,28 +14,28 @@ find_path(
 }
 \arguments{
 \item{multi_layered_network_file}{A character string specifying the path to the
-  integrated multi-layered network data file (e.g., output
-  from `construct_multi_layered_network`). Expected columns: 'Feature1',
-  'Feature2', 'edge_score' (numeric), and 'edge_type'.}
+integrated multi-layered network data file (e.g., output
+from `construct_multi_layered_network`). Expected columns: 'Feature1',
+'Feature2', 'edge_score', and 'edge_type'.}
 
 \item{source_node}{A character string specifying the name of the starting node
-  for pathfinding. This node must exist in the network.}
+for pathfinding. This node must exist in the network.}
 
 \item{target_node}{A character string specifying the name of the ending node
-  for pathfinding. This node must exist in the network.}
+for pathfinding. This node must exist in the network.}
 
 \item{output_directory}{A character string specifying the path to the directory
-  where the shortest path results will be saved as a CSV file. The directory
-  will be created if it does not exist.}
+where the shortest path results will be saved as a CSV file. The directory
+will be created if it does not exist.}
 
 \item{file_type}{A character string indicating the type of input file.
-  Must be "csv" (for comma-separated) or "tsv" (for tab-separated).}
+Must be "csv" (for comma-separated) or "tsv" (for tab-separated).}
 }
 \value{
 The function's primary output is a CSV file saved
-  to the specified `output_directory`, detailing the edges of the shortest path
-  found between the source and target nodes. If no path is found, `NULL` is returned
-  invisibly and a message is printed.
+   to the specified `output_directory`, detailing the edges of the shortest path
+   found between the source and target nodes. If no path is found, `NULL` is returned
+   invisibly and a message is printed.
 }
 \description{
 This function identifies the shortest path between a specified source node
@@ -51,5 +51,5 @@ This transformation aims to represent stronger connections (higher `edge_score`)
 as shorter paths (lower weights), ensuring all weights are non-negative for Dijkstra's algorithm.
 }
 \references{
-Dijkstra EW. A note on two problems in connexion with graphs.  Edsger Wybe Dijkstra: his life, work, and legacy2022. p. 287-90.
+Dijkstra EW. A note on two problems in connexion with graphs.Edsger Wybe Dijkstra: his life, work, and legacy2022. p. 287-90.
 }
