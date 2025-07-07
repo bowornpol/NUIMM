@@ -13,25 +13,25 @@ iden_hub(
 }
 \arguments{
 \item{multi_layered_network_file}{A character string specifying the path to the
-integrated multi-layered network data file (output
-from `con.mln` or `con.mln.all`). Expected columns: 'Feature1' and
-'Feature2'. 'edge_score' and 'edge_type' are loaded but not directly used
-in the MCC calculation itself (only edge presence matters for cliques).}
+    integrated multi-layered network data file (output
+    from `con.mln` or `con.mln.all`). Expected columns: 'Feature1' and
+    'Feature2'. 'edge_score' and 'edge_type' are loaded but not directly used
+    in the MCC calculation itself (only edge presence matters for cliques).}
 
 \item{output_directory}{A character string specifying the path to the directory
-where the hub identification results will be saved as a CSV file.
-The directory will be created if it does not exist.}
+    where the hub identification results will be saved as a CSV file.
+    The directory will be created if it does not exist.}
 
 \item{file_type}{A character string indicating the type of input file.
-Must be "csv" (for comma-separated) or "tsv" (for tab-separated).}
+    Must be "csv" (for comma-separated) or "tsv" (for tab-separated).}
 
 \item{top_n_hubs}{An optional integer specifying the number of top hub nodes
-to return. If `NULL` (default), all nodes will be returned, ranked by MCC score.}
+    to return. If `NULL` (default), all nodes will be returned, ranked by MCC score.}
 }
 \value{
 The function's primary output is a CSV file saved
-   to the specified `output_directory`, containing the ranked list of nodes
-   and their MCC scores.
+    to the specified `output_directory`, containing the ranked list of nodes
+    and their MCC scores.
 }
 \description{
 This function identifies hub nodes in a multi-layered network using the
@@ -43,11 +43,11 @@ The function performs the following steps:
 2. Constructs an undirected `igraph` object from the network data.
 3. Finds all maximal cliques within the graph.
 4. Calculates the MCC score for each node:
-   - It sums `factorial(clique_size - 1)` for each maximal clique of size
-     3 or more that contains the node.
-   - After this summation, if a node's calculated MCC score is still zero
-     (meaning it wasn't part of any clique of size >= 3) AND it has a
-     degree greater than zero, its MCC is then set to its degree.
+    - It sums `factorial(clique_size - 1)` for each maximal clique that contains the node.
+      (Note: This means cliques of any size will contribute to the sum).
+    - If there is no edge between the neighbors of a node, its MCC is then set to its degree.
+      This rule applies if the node has degree 0 (MCC becomes 0), degree 1 (MCC becomes 1),
+      or degree >= 2 with a local clustering coefficient of 0.
 5. Ranks nodes by their MCC score in descending order.
 6. Optionally filters to return only the top N hub nodes.
 7. Saves the ranked hub identification results to a CSV file.
