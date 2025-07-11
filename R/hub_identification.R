@@ -9,30 +9,30 @@
 #' 2. Constructs an undirected `igraph` object from the network data.
 #' 3. Finds all maximal cliques within the graph.
 #' 4. Calculates the MCC score for each node:
-#'    - It sums `factorial(clique_size - 1)` for each maximal clique that contains the node.
-#'      (Note: This means cliques of any size will contribute to the sum).
-#'    - If there is no edge between the neighbors of a node, its MCC is then set to its degree.
-#'      This rule applies if the node has degree 0 (MCC becomes 0), degree 1 (MCC becomes 1),
-#'      or degree >= 2 with a local clustering coefficient of 0.
+#'    - It sums `factorial(clique_size - 1)` for each maximal clique that contains the node.
+#'      (Note: This means cliques of any size will contribute to the sum).
+#'    - If there is no edge between the neighbors of a node, its MCC is then set to its degree.
+#'      This rule applies if the node has degree 0 (MCC becomes 0), degree 1 (MCC becomes 1),
+#'      or degree >= 2 with a local clustering coefficient of 0.
 #' 5. Ranks nodes by their MCC score in descending order.
 #' 6. Optionally filters to return only the top N hub nodes.
 #' 7. Saves the ranked hub identification results to a CSV file.
 #'
 #' @param multi_layered_network_file A character string specifying the path to the
-#'    integrated multi-layered network data file (output
-#'    from `con.mln` or `con.mln.all`). Expected columns: 'Feature1' and
-#'    'Feature2'. 'edge_score' and 'edge_type' are loaded but not directly used
-#'    in the MCC calculation itself (only edge presence matters for cliques).
+#'   integrated multi-layered network data file (output
+#'   from `con.mln` or `con.mln.all`). Expected columns: 'Feature1' and
+#'   'Feature2'. 'edge_score' and 'edge_type' are loaded but not directly used
+#'   in the MCC calculation itself (only edge presence matters for cliques).
 #' @param output_directory A character string specifying the path to the directory
-#'    where the hub identification results will be saved as a CSV file.
-#'    The directory will be created if it does not exist.
+#'   where the hub identification results will be saved as a CSV file.
+#'   The directory will be created if it does not exist.
 #' @param file_type A character string indicating the type of input file.
-#'    Must be "csv" (for comma-separated) or "tsv" (for tab-separated).
+#'   Must be "csv" (for comma-separated) or "tsv" (for tab-separated).
 #' @param top_n_hubs An optional integer specifying the number of top hub nodes
-#'    to return. If `NULL` (default), all nodes will be returned, ranked by MCC score.
+#'   to return. If `NULL` (default), all nodes will be returned, ranked by MCC score.
 #' @return The function's primary output is a CSV file saved
-#'    to the specified `output_directory`, containing the ranked list of nodes
-#'    and their MCC scores.
+#'   to the specified `output_directory`, containing the ranked list of nodes
+#'   and their MCC scores.
 #' @references
 #' Chin CH, Chen SH, Wu HH, Ho CW, Ko MT, Lin CY. cytoHubba: identifying hub objects and sub-networks from complex interactome. BMC systems biology. 2014 Dec;8:1-7.
 #' @export
@@ -69,12 +69,12 @@ iden_hub <- function(
   if (!all(required_cols %in% colnames(network_data))) {
     stop("Network file must contain columns: ", paste(required_cols, collapse = ", "))
   }
-  message("  Successfully loaded and validated network file.")
+  message("  Successfully loaded and validated network file.")
 
   # 2. Create an undirected graph
-  message("  Creating undirected graph for MCC calculation.")
+  message("  Creating undirected graph for MCC calculation.")
   g <- igraph::graph_from_data_frame(d = network_data[, required_cols], directed = FALSE)
-  message("  Graph created with ", igraph::vcount(g), " nodes and ", igraph::ecount(g), " edges.")
+  message("  Graph created with ", igraph::vcount(g), " nodes and ", igraph::ecount(g), " edges.")
 
   # 3. Find all maximal cliques
   message("\n2. Finding all maximal cliques. This may take a while for large or dense networks...")
@@ -84,7 +84,7 @@ iden_hub <- function(
       stop(paste("Error finding maximal cliques: ", e$message, ". This can be computationally intensive for large graphs.", sep = ""))
     }
   )
-  message("  Found ", length(cliques), " maximal cliques.")
+  message("  Found ", length(cliques), " maximal cliques.")
 
   # 4. Calculate MCC scores for each node based on the provided formula
   message("\n3. Calculating MCC scores for each node.")
@@ -133,7 +133,7 @@ iden_hub <- function(
       # Only log if the score is actually changing from the sum calculation.
       # For degree 0 and 1, the summation might already result in degree, so no change.
       if (mcc_scores[node_name] != current_degree) {
-        message("  Node '", node_name, "' has no edge between neighbors (or degree < 2); MCC overridden to its degree (", current_degree, ").")
+        message("  Node '", node_name, "' has no edge between neighbors (or degree < 2); MCC overridden to its degree (", current_degree, ").")
       }
       mcc_scores[node_name] <- current_degree
     }
@@ -156,7 +156,7 @@ iden_hub <- function(
       warning("Requested top_n_hubs (", top_n_hubs, ") is greater than total nodes (", nrow(hub_results_df), "). Returning all nodes.")
     } else {
       hub_results_df <- head(hub_results_df, n = top_n_hubs)
-      message("  Filtered to top ", top_n_hubs, " hub nodes.")
+      message("  Filtered to top ", top_n_hubs, " hub nodes.")
     }
   }
 
