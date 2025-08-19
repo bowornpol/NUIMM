@@ -1,6 +1,6 @@
-Package: NUIM
+Package: NUIMM
 Type: Package
-Title: NUIM: Network-based utility for integrating microbiome and metabolome data
+Title: NUIMM: Network-based utility for integrating microbiome and metabolome data
 Version: 1.0.0
 Author: Bowornpol Nuim [aut, cre]
 Maintainer: Bowornpol Nuim <bowornpol@hotmail.com>
