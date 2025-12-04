@@ -123,51 +123,25 @@ iden_hub <- function(
     sub_g <- igraph::induced_subgraph(g, vids = nodes_to_plot)
 
     # Attach MCC scores to the graph object so ggraph can access them
+    # We match the scores from the results dataframe to the graph nodes
     matched_scores <- hub_results_df$MCC_score[match(igraph::V(sub_g)$name, hub_results_df$Node)]
     igraph::V(sub_g)$mcc_score <- matched_scores
 
     # 2. Construct the Plot using ggraph
     p <- ggraph::ggraph(sub_g, layout = 'linear', circular = TRUE) +
-      # Edges: Subtle grey lines
       ggraph::geom_edge_arc(alpha = 0.4, color = "gray70", strength = 0.1) +
-
-      # Nodes: SIZE INCREASED TO 15
-      ggraph::geom_node_point(ggplot2::aes(color = mcc_score), size = 15) +
-
-      # Labels
+      ggraph::geom_node_point(ggplot2::aes(color = mcc_score), size = 8) +
       ggraph::geom_node_text(ggplot2::aes(label = name), repel = FALSE, vjust = 2.5, hjust = 0.5, size = 4, fontface = "bold") +
-
-      # Color Scale
       ggplot2::scale_color_viridis_c(option = "plasma", name = "MCC Score", direction = -1) +
 
-      # --- CUSTOM LEGEND SETTINGS START ---
-      # Configure the Color Bar (Legend) to have title on top and be horizontal
-      ggplot2::guides(
-        color = ggplot2::guide_colorbar(
-          title.position = "top",       # Title on top of bar
-          title.hjust = 0.5,            # Center title horizontally
-          barwidth = 15,                # Make the bar wider (horizontal look)
-          barheight = 1,                # Make the bar thinner
-          direction = "horizontal"      # Ensure bar direction is horizontal
-        )
-      ) +
-
-      # Theme: Clean background + Bottom Right Legend Position
+      # Theme: Clean, void background
       ggplot2::theme_void() +
       ggplot2::theme(
-        # Position: Bottom Right (Coordinates 0-1)
-        # x=1 is right edge, y=0 is bottom edge. Justification ensures the corner matches.
-        legend.position = c(1, 0),
-        legend.justification = c(1, 0), # Anchors the bottom-right corner of the legend box
-
-        legend.direction = "horizontal", # General direction of legend items
-        legend.title = ggplot2::element_text(face = "bold", size = 10, vjust = 1),
-        legend.margin = ggplot2::margin(10, 20, 10, 10), # Add some padding from the very edge
-
+        legend.position = "right",
+        legend.title = ggplot2::element_text(face = "bold"),
         plot.title = ggplot2::element_text(hjust = 0.5, face = "bold", size = 16),
         plot.margin = ggplot2::unit(c(1, 1, 1, 1), "cm")
       )
-    # --- CUSTOM LEGEND SETTINGS END ---
 
     # 3. Save Files (PDF and PNG)
     base_plot_name <- paste0("hub_plot_", cleaned_input_file_name,
