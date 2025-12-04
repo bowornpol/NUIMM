@@ -9,7 +9,7 @@ iden_hub(
   output_directory,
   file_type = c("csv", "tsv"),
   top_n_hubs = NULL,
-  visualize = TRUE
+  visualize = FALSE
 )
 }
 \arguments{
