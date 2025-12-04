@@ -149,8 +149,7 @@ iden_hub <- function(
         legend.position = "right",
         plot.title = ggplot2::element_text(hjust = 0.5, face = "bold", size = 16),
         plot.margin = ggplot2::unit(c(1, 1, 1, 1), "cm")
-      ) +
-      ggplot2::labs(title = paste("Top", length(nodes_to_plot), "Hub Nodes (MCC)"))
+      )
 
     # 3. Save Files (PDF and PNG)
     base_plot_name <- paste0("hub_plot_", cleaned_input_file_name,
