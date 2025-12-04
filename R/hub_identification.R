@@ -147,6 +147,7 @@ iden_hub <- function(
       ggplot2::theme_void() +
       ggplot2::theme(
         legend.position = "right",
+        legend.title = ggplot2::element_text(face = "bold"),
         plot.title = ggplot2::element_text(hjust = 0.5, face = "bold", size = 16),
         plot.margin = ggplot2::unit(c(1, 1, 1, 1), "cm")
       )
