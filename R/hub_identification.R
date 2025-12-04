@@ -17,7 +17,7 @@ iden_hub <- function(
   output_directory,
   file_type = c("csv", "tsv"),
   top_n_hubs = NULL,
-  visualize = FALSE
+  visualize = TRUE
 ) {
   file_type <- match.arg(file_type)
   message("Starting hub identification using Maximal Clique Centrality (MCC) algorithm.")
