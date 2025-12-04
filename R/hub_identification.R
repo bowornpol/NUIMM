@@ -10,7 +10,7 @@
 #' @param output_directory Path to save results.
 #' @param file_type "csv" or "tsv".
 #' @param top_n_hubs Integer. Number of top hubs to filter and visualize.
-#' @param visualize Logical. If TRUE, saves a PDF plot of the top hubs and their connections. Defaults to FALSE.
+#' @param visualize Logical. If TRUE, saves PDF and PNG plots of the top hubs. Defaults to FALSE.
 #' @export
 iden_hub <- function(
   multi_layered_network_file,
@@ -36,7 +36,7 @@ iden_hub <- function(
   message("\n1. Loading network from: ", multi_layered_network_file)
   if (!file.exists(multi_layered_network_file)) stop("File not found.")
 
-  # Standardized reading based on file_type (Replacing custom read_input_file for portability)
+  # Standardized reading
   if (file_type == "csv") {
     network_data <- read.csv(multi_layered_network_file, stringsAsFactors = FALSE)
   } else {
@@ -80,7 +80,6 @@ iden_hub <- function(
   for (node_name in igraph::V(g)$name) {
     current_degree <- node_degrees[node_name]
     is_no_edge <- FALSE
-
     if (current_degree <= 1) {
       is_no_edge <- TRUE
     } else {
@@ -88,7 +87,6 @@ iden_hub <- function(
         is_no_edge <- TRUE
       }
     }
-
     if (is_no_edge) {
       mcc_scores[node_name] <- current_degree
     }
@@ -111,51 +109,67 @@ iden_hub <- function(
     }
   }
 
-  # --- NEW: VISUALIZATION BLOCK ---
+  # --- NEW: VISUALIZATION BLOCK (MODERN) ---
   if (visualize) {
-    message("\n  Generating visualization...")
+    message("\n  Generating modern visualization...")
 
-    # 1. Identify nodes to plot
+    # Check for required visualization packages
+    if (!requireNamespace("ggraph", quietly = TRUE) || !requireNamespace("ggplot2", quietly = TRUE)) {
+      stop("To use visualize=TRUE, you must install 'ggraph' and 'ggplot2'. Run: install.packages(c('ggraph', 'ggplot2'))")
+    }
+
+    # 1. Prepare Data
     nodes_to_plot <- hub_results_df$Node
-
-    # 2. Create a subgraph containing ONLY these nodes and connections between them
     sub_g <- igraph::induced_subgraph(g, vids = nodes_to_plot)
 
-    # 3. Scale node sizes based on MCC Score (Min size 5, Max size 20)
-    scores <- hub_results_df$MCC_score
-    if (max(scores) == min(scores)) {
-      sizes <- rep(15, length(scores))
-    } else {
-      # Normalize between 0 and 1, then scale
-      sizes <- 5 + 15 * ((scores - min(scores)) / (max(scores) - min(scores)))
-    }
-    # Match sizes to the graph node order
-    graph_order_names <- igraph::V(sub_g)$name
-    matched_sizes <- sizes[match(graph_order_names, hub_results_df$Node)]
+    # Attach MCC scores to the graph object so ggraph can access them
+    # We match the scores from the results dataframe to the graph nodes
+    matched_scores <- hub_results_df$MCC_score[match(igraph::V(sub_g)$name, hub_results_df$Node)]
+    igraph::V(sub_g)$mcc_score <- matched_scores
 
-    # 4. Save to PDF
-    plot_filename <- paste0("hub_plot_", cleaned_input_file_name,
-                            if(!is.null(top_n_hubs)) paste0("_top", top_n_hubs) else "", ".pdf")
-    plot_path <- file.path(output_directory, plot_filename)
+    # 2. Construct the Plot using ggraph
+    # layout = 'linear', circular = TRUE creates the circular layout
+    p <- ggraph::ggraph(sub_g, layout = 'linear', circular = TRUE) +
+      # Edges: Subtle grey lines
+      ggraph::geom_edge_arc(alpha = 0.4, color = "gray70", strength = 0.1) +
 
-    pdf(plot_path, width = 10, height = 10)
-    plot(sub_g,
-         vertex.label = igraph::V(sub_g)$name,
-         vertex.label.cex = 0.8,       # Font size
-         vertex.label.color = "black",
-         vertex.size = matched_sizes,  # Dynamic size
-         vertex.color = "tomato",      # Node color
-         vertex.frame.color = "darkred",
-         edge.color = "gray70",
-         edge.width = 1.5,
-         layout = igraph::layout_nicely(sub_g),
-         main = paste("Top", length(nodes_to_plot), "Hubs (MCC Algorithm)"))
-    dev.off()
-    message("  Saved visualization to: ", plot_path)
+      # Nodes: Same size (size = 8), Color mapped to MCC Score
+      ggraph::geom_node_point(ggplot2::aes(color = mcc_score), size = 8) +
+
+      # Labels: Repel ensures they don't overlap too much
+      ggraph::geom_node_text(ggplot2::aes(label = name), repel = TRUE, size = 4, fontface = "bold") +
+
+      # Color Scale: Modern "Plasma" or "Viridis" gradient
+      # This adds the legend (แถบอธิบายสี) automatically
+      ggplot2::scale_color_viridis_c(option = "plasma", name = "MCC Score", direction = -1) +
+
+      # Theme: Clean, void background
+      ggplot2::theme_void() +
+      ggplot2::theme(
+        legend.position = "right",
+        plot.title = ggplot2::element_text(hjust = 0.5, face = "bold", size = 16),
+        plot.margin = ggplot2::unit(c(1, 1, 1, 1), "cm")
+      ) +
+      ggplot2::labs(title = paste("Top", length(nodes_to_plot), "Hub Nodes (MCC)"))
+
+    # 3. Save Files (PDF and PNG)
+    base_plot_name <- paste0("hub_plot_", cleaned_input_file_name,
+                             if(!is.null(top_n_hubs)) paste0("_top", top_n_hubs) else "")
+
+    pdf_path <- file.path(output_directory, paste0(base_plot_name, ".pdf"))
+    png_path <- file.path(output_directory, paste0(base_plot_name, ".png"))
+
+    # Save PDF
+    ggplot2::ggsave(pdf_path, plot = p, width = 10, height = 8, device = "pdf")
+    message("  Saved PDF visualization to: ", pdf_path)
+
+    # Save PNG
+    ggplot2::ggsave(png_path, plot = p, width = 10, height = 8, dpi = 300, device = "png", bg = "white")
+    message("  Saved PNG visualization to: ", png_path)
   }
   # --------------------------------
 
-  # 7. Save CSV
+  # 7. Save CSV Results
   output_filename <- paste0("hub_mcc_", cleaned_input_file_name,
                             if(!is.null(top_n_hubs)) paste0("_top", top_n_hubs) else "", ".csv")
   output_filepath <- file.path(output_directory, output_filename)

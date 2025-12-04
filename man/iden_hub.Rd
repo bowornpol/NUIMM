@@ -21,7 +21,7 @@ iden_hub(
 
 \item{top_n_hubs}{Integer. Number of top hubs to filter and visualize.}
 
-\item{visualize}{Logical. If TRUE, saves a PDF plot of the top hubs and their connections. Defaults to FALSE.}
+\item{visualize}{Logical. If TRUE, saves PDF and PNG plots of the top hubs. Defaults to FALSE.}
 }
 \description{
 This function identifies hub nodes in a multi-layered network using the
