@@ -137,7 +137,7 @@ iden_hub <- function(
       ggraph::geom_node_point(ggplot2::aes(color = mcc_score), size = 8) +
 
       # Labels: Repel ensures they don't overlap too much
-      ggraph::geom_node_text(ggplot2::aes(label = name), repel = TRUE, size = 4, fontface = "bold") +
+      ggraph::geom_node_text(ggplot2::aes(label = name), repel = FALSE, vjust = 2.5, hjust = 0.5, size = 4, fontface = "bold") +
 
       # Color Scale: Modern "Plasma" or "Viridis" gradient
       # This adds the legend (แถบอธิบายสี) automatically
