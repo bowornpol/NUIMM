@@ -24,9 +24,11 @@ iden_hub(
 \item{visualize}{Logical. If TRUE, saves PDF and PNG plots of the top hubs. Defaults to FALSE.}
 }
 \description{
-This function identifies hub nodes in a multi-layered network using the
-Maximal Clique Centrality (MCC) algorithm and optionally visualizes the results.
+Hub identification using Maximal Clique Centrality (MCC) algorithm
 }
 \details{
-[Standard details...]
+This function identifies influential "hub" nodes in a multi-layered network
+using the Maximal Clique Centrality (MCC) algorithm. The results are exported
+as a CSV file, with optional generation of high-resolution circular network plots
+(PDF/PNG) to visualize the top-ranked hubs.
 }

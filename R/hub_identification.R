@@ -1,10 +1,10 @@
 #' Hub identification using Maximal Clique Centrality (MCC) algorithm
 #'
-#' This function identifies hub nodes in a multi-layered network using the
-#' Maximal Clique Centrality (MCC) algorithm and optionally visualizes the results.
-#'
 #' @details
-#' [Standard details...]
+#' This function identifies influential "hub" nodes in a multi-layered network
+#' using the Maximal Clique Centrality (MCC) algorithm. The results are exported
+#' as a CSV file, with optional generation of high-resolution circular network plots
+#' (PDF/PNG) to visualize the top-ranked hubs.
 #'
 #' @param multi_layered_network_file Path to input CSV/TSV.
 #' @param output_directory Path to save results.
@@ -109,9 +109,9 @@ iden_hub <- function(
     }
   }
 
-  # --- NEW: VISUALIZATION BLOCK (MODERN) ---
+  # 7. Generate network visualization
   if (visualize) {
-    message("\n  Generating modern visualization...")
+    message("\n5. Generating network visualization...")
 
     # Check for required visualization packages
     if (!requireNamespace("ggraph", quietly = TRUE) || !requireNamespace("ggplot2", quietly = TRUE)) {
@@ -122,26 +122,39 @@ iden_hub <- function(
     nodes_to_plot <- hub_results_df$Node
     sub_g <- igraph::induced_subgraph(g, vids = nodes_to_plot)
 
-    # Attach MCC scores to the graph object so ggraph can access them
-    # We match the scores from the results dataframe to the graph nodes
+    # Attach MCC scores to the graph object
     matched_scores <- hub_results_df$MCC_score[match(igraph::V(sub_g)$name, hub_results_df$Node)]
     igraph::V(sub_g)$mcc_score <- matched_scores
 
     # 2. Construct the Plot using ggraph
     p <- ggraph::ggraph(sub_g, layout = 'linear', circular = TRUE) +
       ggraph::geom_edge_arc(alpha = 0.4, color = "gray70", strength = 0.1) +
-      ggraph::geom_node_point(ggplot2::aes(color = mcc_score), size = 8) +
-      ggraph::geom_node_text(ggplot2::aes(label = name), repel = FALSE, vjust = 2.5, hjust = 0.5, size = 4, fontface = "bold") +
+      ggraph::geom_node_point(ggplot2::aes(color = mcc_score), size = 12) +
+      ggraph::geom_node_text(ggplot2::aes(label = name), repel = FALSE, vjust = 3.5, hjust = 0.5, size = 4, fontface = "bold") +
       ggplot2::scale_color_viridis_c(option = "plasma", name = "MCC Score", direction = -1) +
 
-      # Theme: Clean, void background
+      ggplot2::guides(
+        color = ggplot2::guide_colorbar(
+          title.position = "top",
+          title.hjust = 0.5,
+          barwidth = 1.5,       # Thinner width for vertical bar
+          barheight = 15,       # Taller height for vertical bar
+          direction = "vertical", # Changed to vertical
+          frame.colour = "black",
+          ticks.colour = "black"
+        )
+      ) +
+
       ggplot2::theme_void() +
       ggplot2::theme(
         legend.position = "right",
-        legend.title = ggplot2::element_text(face = "bold"),
+        legend.direction = "vertical",
+        legend.title = ggplot2::element_text(face = "bold", size = 11, hjust = 0.5), # Center title
+        legend.margin = ggplot2::margin(0, 0, 0, 15), # Add padding on the left of legend
         plot.title = ggplot2::element_text(hjust = 0.5, face = "bold", size = 16),
         plot.margin = ggplot2::unit(c(1, 1, 1, 1), "cm")
-      )
+      ) +
+      ggplot2::coord_fixed(clip = "off")
 
     # 3. Save Files (PDF and PNG)
     base_plot_name <- paste0("hub_plot_", cleaned_input_file_name,
@@ -151,20 +164,20 @@ iden_hub <- function(
     png_path <- file.path(output_directory, paste0(base_plot_name, ".png"))
 
     # Save PDF
-    ggplot2::ggsave(pdf_path, plot = p, width = 10, height = 8, device = "pdf")
+    ggplot2::ggsave(pdf_path, plot = p, width = 12, height = 10, device = "pdf") # Increased width slightly for legend
     message("  Saved PDF visualization to: ", pdf_path)
 
     # Save PNG
-    ggplot2::ggsave(png_path, plot = p, width = 10, height = 8, dpi = 300, device = "png", bg = "white")
+    ggplot2::ggsave(png_path, plot = p, width = 12, height = 10, dpi = 300, device = "png", bg = "white")
     message("  Saved PNG visualization to: ", png_path)
   }
   # --------------------------------
 
-  # 7. Save CSV Results
+  # 8. Save CSV Results
   output_filename <- paste0("hub_mcc_", cleaned_input_file_name,
                             if(!is.null(top_n_hubs)) paste0("_top", top_n_hubs) else "", ".csv")
   output_filepath <- file.path(output_directory, output_filename)
-  message("\n5. Saving CSV results to: ", output_filepath)
+  message("\n6. Saving CSV results to: ", output_filepath)
   write.csv(hub_results_df, output_filepath, row.names = FALSE)
 
   message("Hub identification complete.")
