@@ -3,7 +3,7 @@
 #' @details
 #' This function identifies influential "hub" nodes in a multi-layered network
 #' using the Maximal Clique Centrality (MCC) algorithm. The results are exported
-#' as a CSV file, with optional generation of network plots(PDF/PNG) to visualize the top-ranked hubs.
+#' as a CSV file, with optional generation of network plot to visualize the top-ranked hubs.
 #'
 #' @param multi_layered_network_file Path to input CSV/TSV.
 #' @param output_directory Path to save results.
