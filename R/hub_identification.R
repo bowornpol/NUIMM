@@ -91,7 +91,7 @@ iden_hub <- function(
     }
   }
 
-  # 5. Rank results
+  # 5. Rank nodes
   message("\n4. Ranking nodes...")
   hub_results_df <- dplyr::arrange(
     data.frame(Node = names(mcc_scores), MCC_score = mcc_scores, stringsAsFactors = FALSE),
