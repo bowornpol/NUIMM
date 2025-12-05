@@ -167,7 +167,7 @@ iden_hub <- function(
     message("  Saved PDF visualization to: ", pdf_path)
 
     # Save PNG
-    ggplot2::ggsave(png_path, plot = p, width = 12, height = 10, dpi = 300, device = "png", bg = "white")
+    ggplot2::ggsave(png_path, plot = p, width = 12, height = 10, dpi = 600, device = "png", bg = "white")
     message("  Saved PNG visualization to: ", png_path)
   }
   # --------------------------------
