@@ -5,7 +5,7 @@
 #' This function calculates correlations between pathway abundances and metabolite
 #' concentrations, optionally filtering results based on GSEA findings and
 #' statistical significance. This is an internal function primarily used by
-#' `con_mln_all` and wrapped by
+#' `con_mln` and wrapped by
 #' `con_pmn`.
 #'
 #' @param pathway_abundance_file A character string specifying the path to the

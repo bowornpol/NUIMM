@@ -6,8 +6,8 @@
 #' and Pathway-Metabolite) into a single comprehensive network. It uses GSEA
 #' results as a central filter to ensure that only relevant pathways and their
 #' associated connections are included in the final integrated network. This is
-#' an internal function primarily used by `con_mln_all`
-#' and wrapped by `con_mln`.
+#' an internal function primarily used by `con_mln`
+#' and wrapped by `con_mln_int`.
 #'
 #' @param gsea_results_file A character string specifying the path to the
 #'   GSEA results file.

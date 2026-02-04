@@ -3,9 +3,9 @@
 #' This comprehensive function coordinates the construction of all individual
 #' network layers (Microbe-Pathway, Pathway-Pathway, Pathway-Metabolite) and
 #' then integrates them into a single, multi-layered network. It
-#' combines the functionality of `con_mpn`,
-#' `con_ppn`, `con_pmn`,
-#' and `con_mln` into one convenient, end-to-end call.
+#' combines the functionality of `con_mpn_int`,
+#' `con_ppn_int`, `con_pmn_int`,
+#' and `con_mln_int` into one convenient, end-to-end call.
 #'
 #' @details
 #' The pipeline executes in the following sequential order to respect data dependencies:
@@ -72,7 +72,7 @@
 #'   Must be "bonferroni" or "fdr". Used if `pmn_filter_by` is "q_value".
 #' @return A character vector of paths to the final integrated multi-layered network CSV files.
 #' @export
-con_mln_all <- function(
+con_mln <- function(
   abundance_file,
   metadata_file,
   map_file,

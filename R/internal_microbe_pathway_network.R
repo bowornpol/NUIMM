@@ -6,7 +6,7 @@
 #' to construct a microbe-pathway network, calculating relative contributions
 #' of taxa to specific functions. It supports various filtering options
 #' to focus on the most significant contributions. This is an internal function
-#' primarily used by `con_mln_all` and wrapped by
+#' primarily used by `con_mln` and wrapped by
 #' `con_mpn`.
 #'
 #' @param contrib_file A character string specifying the path to the contribution data file.

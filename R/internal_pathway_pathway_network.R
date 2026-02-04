@@ -6,7 +6,7 @@
 #' Gene Set Enrichment Analysis (GSEA) to identify enriched pathways and
 #' subsequently computes Jaccard indices to quantify overlap between core
 #' enrichment genes of significant pathways. This is an internal function
-#' primarily used by `con_mln_all` and wrapped by
+#' primarily used by `con_mln` and wrapped by
 #' `con_ppn`.
 #'
 #' @param abundance_file A character string specifying the path to the
