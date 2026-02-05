@@ -2,44 +2,25 @@
 % Please edit documentation in R/internal_multi_layered_network.R
 \name{con_mln_int}
 \alias{con_mln_int}
-\title{Internal helper for Multi-layered network construction}
+\title{Internal MLN Integration & Visualization Helper}
 \usage{
-con_mln_int(
-  gsea_results_file,
-  microbe_pathway_file,
-  pathway_jaccard_file,
-  pathway_metabolite_file,
-  output_directory,
-  file_type = c("csv", "tsv")
-)
+con_mln_int(gsea_file, mpn_file, ppn_file, pmn_file, output_dir)
 }
 \arguments{
-\item{gsea_results_file}{A character string specifying the path to the
-GSEA results file.}
+\item{gsea_file}{Character path to GSEA file.}
 
-\item{microbe_pathway_file}{A character string specifying the path to the
-Microbe-Pathway network file.}
+\item{mpn_file}{Character path to MPN file.}
 
-\item{pathway_jaccard_file}{A character string specifying the path to the
-Pathway-Pathway Jaccard index file.}
+\item{ppn_file}{Character path to PPN file.}
 
-\item{pathway_metabolite_file}{A character string specifying the path to the
-Pathway-Metabolite network file.}
+\item{pmn_file}{Character path to PMN file.}
 
-\item{output_directory}{A character string specifying the path to the directory
-where the final integrated multi-layered network CSV file will be saved.}
-
-\item{file_type}{A character string indicating the type of input files.}
+\item{output_dir}{Character path to output directory.}
 }
 \value{
-A character string representing the path to the generated multi-layered network CSV file.
+Final network file path.
 }
 \description{
-This function integrates various network layers (Microbe-Pathway, Pathway-Pathway,
-and Pathway-Metabolite) into a single comprehensive network. It uses GSEA
-results as a central filter to ensure that only relevant pathways and their
-associated connections are included in the final integrated network. This is
-an internal function primarily used by `con_mln_all`
-and wrapped by `con_mln`.
+Merges MPN, PPN, and PMN layers and visualizes.
 }
 \keyword{internal}

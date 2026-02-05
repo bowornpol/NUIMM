@@ -91,7 +91,7 @@ iden_hub <- function(
     }
   }
 
-  # 5. Rank Results
+  # 5. Rank nodes
   message("\n4. Ranking nodes...")
   hub_results_df <- dplyr::arrange(
     data.frame(Node = names(mcc_scores), MCC_score = mcc_scores, stringsAsFactors = FALSE),
@@ -167,7 +167,7 @@ iden_hub <- function(
     message("  Saved PDF visualization to: ", pdf_path)
 
     # Save PNG
-    ggplot2::ggsave(png_path, plot = p, width = 12, height = 10, dpi = 300, device = "png", bg = "white")
+    ggplot2::ggsave(png_path, plot = p, width = 12, height = 10, dpi = 600, device = "png", bg = "white")
     message("  Saved PNG visualization to: ", png_path)
   }
   # --------------------------------

@@ -2,55 +2,55 @@
 % Please edit documentation in R/internal_pathway_pathway_network.R
 \name{con_ppn_int}
 \alias{con_ppn_int}
-\title{Internal helper for Pathway-pathway network construction}
+\title{Internal Pathway-Pathway Network Helper}
 \usage{
 con_ppn_int(
-  abundance_file,
+  gene_abun_file,
   metadata_file,
   map_file,
-  output_file,
-  file_type = c("csv", "tsv"),
-  pvalueCutoff,
-  pAdjustMethod = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY",
-    "none"),
-  rank_by = c("signed_log_pvalue", "log2FoldChange")
+  output_dir,
+  da_method = c("deseq2", "edger", "maaslin2", "simple"),
+  map_database = c("kegg", "metacyc"),
+  rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
+  p_adjust_method = "fdr",
+  pvalue_cutoff = 0.05,
+  jaccard_cutoff = 0.2,
+  min_gs_size = 10,
+  max_gs_size = 500,
+  eps = 1e-10
 )
 }
 \arguments{
-\item{abundance_file}{A character string specifying the path to the
-gene abundance data file.}
+\item{gene_abun_file}{Character path to gene abundance file.}
 
-\item{metadata_file}{A character string specifying the path to the sample metadata file.}
+\item{metadata_file}{Character path to metadata file.}
 
-\item{map_file}{A character string specifying the path to the
-pathway-to-gene mapping file.}
+\item{map_file}{Character path to mapping file.}
 
-\item{output_file}{A character string specifying the path to the directory
-where output CSV files (GSEA results and Jaccard indices) will be saved.}
+\item{output_dir}{Character path to output directory.}
 
-\item{file_type}{A character string indicating the type of input files.}
+\item{da_method}{DA method options: "deseq2", "edger", "maaslin2", "simple".}
 
-\item{pvalueCutoff}{A numeric value specifying the adjusted p-value cutoff
-for determining significance in GSEA results.}
+\item{map_database}{Database options: "kegg", "metacyc".}
 
-\item{pAdjustMethod}{A character string specifying the method for p-value
-adjustment.}
+\item{rank_by}{GSEA ranking options: "signed_log_pvalue", "log2foldchange", "pvalue".}
 
-\item{rank_by}{A character string specifying the method to rank genes for GSEA.}
+\item{p_adjust_method}{GSEA p-adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".}
+
+\item{pvalue_cutoff}{Numeric p-value cutoff.}
+
+\item{jaccard_cutoff}{Numeric Jaccard cutoff.}
+
+\item{min_gs_size}{Numeric min gene set size.}
+
+\item{max_gs_size}{Numeric max gene set size.}
+
+\item{eps}{Numeric GSEA epsilon.}
 }
 \value{
-A list containing:
-  \describe{
-    \item{gsea_paths}{A character vector of paths to the generated GSEA results CSV files.}
-    \item{jaccard_paths}{A character vector of paths to the generated Pathway-Pathway Jaccard index CSV files.}
-  }
+List of GSEA and Jaccard file paths.
 }
 \description{
-This function performs differential expression analysis (using DESeq2) and
-Gene Set Enrichment Analysis (GSEA) to identify enriched pathways and
-subsequently computes Jaccard indices to quantify overlap between core
-enrichment genes of significant pathways. This is an internal function
-primarily used by `con_mln_all` and wrapped by
-`con_ppn`.
+Runs DA, GSEA, and Jaccard index calculation.
 }
 \keyword{internal}

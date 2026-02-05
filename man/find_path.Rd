@@ -9,47 +9,27 @@ find_path(
   source_node,
   target_node,
   output_directory,
-  file_type = c("csv", "tsv")
+  file_type = c("csv", "tsv"),
+  visualize = TRUE
 )
 }
 \arguments{
-\item{multi_layered_network_file}{A character string specifying the path to the
-integrated multi-layered network data file (e.g., output
-from `construct_multi_layered_network`). Expected columns: 'Feature1',
-'Feature2', 'edge_score', and 'edge_type'.}
+\item{multi_layered_network_file}{Path to input CSV/TSV.}
 
-\item{source_node}{A character string specifying the name of the starting node
-for pathfinding. This node must exist in the network.}
+\item{source_node}{Name of the starting node.}
 
-\item{target_node}{A character string specifying the name of the ending node
-for pathfinding. This node must exist in the network.}
+\item{target_node}{Name of the ending node.}
 
-\item{output_directory}{A character string specifying the path to the directory
-where the shortest path results will be saved as a CSV file. The directory
-will be created if it does not exist.}
+\item{output_directory}{Path to save results.}
 
-\item{file_type}{A character string indicating the type of input file.
-Must be "csv" (for comma-separated) or "tsv" (for tab-separated).}
-}
-\value{
-The function's primary output is a CSV file saved
-   to the specified `output_directory`, detailing the edges of the shortest path
-   found between the source and target nodes. If no path is found, `NULL` is returned
-   invisibly and a message is printed.
+\item{file_type}{"csv" or "tsv".}
+
+\item{visualize}{Logical. If TRUE, saves PDF and PNG plots. Defaults to TRUE.}
 }
 \description{
-This function identifies the shortest path between a specified source node
-and a target node within a multi-layered network using Dijkstra's algorithm.
+Pathfinding using Dijkstra's algorithm
 }
 \details{
-The edge weights are transformed from `edge_score` as follows:
-- `edge_score` is first converted to its absolute value to ensure non-negative weights.
-- If the absolute `edge_score` is `NA`, weight is `Inf`.
-- If the absolute `edge_score` is less than 1, weight is `1 / absolute_edge_score`.
-- If the absolute `edge_score` is exactly 1, weight is `1 / (absolute_edge_score + 0.1)`.
-This transformation aims to represent stronger connections (higher `edge_score`)
-as shorter paths (lower weights), ensuring all weights are non-negative for Dijkstra's algorithm.
-}
-\references{
-Dijkstra EW. A note on two problems in connexion with graphs.Edsger Wybe Dijkstra: his life, work, and legacy2022. p. 287-90.
+This function calculates the shortest path between two nodes using Dijkstra's
+algorithm.
 }

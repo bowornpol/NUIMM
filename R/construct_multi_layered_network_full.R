@@ -1,233 +1,186 @@
-#' Multi-layered network construction (end-to-end)
+#' Multi-layered Network Construction (End-to-End)
 #'
-#' This comprehensive function coordinates the construction of all individual
-#' network layers (Microbe-Pathway, Pathway-Pathway, Pathway-Metabolite) and
-#' then integrates them into a single, multi-layered network. It
-#' combines the functionality of `con_mpn`,
-#' `con_ppn`, `con_pmn`,
-#' and `con_mln` into one convenient, end-to-end call.
+#' Standardizes input (Universal, HUMAnN, PICRUSt), builds PPN, MPN, and PMN layers,
+#' and integrates them into a final visualized network.
 #'
-#' @details
-#' The pipeline executes in the following sequential order to respect data dependencies:
-#' 1.  **Pathway-Pathway Network Construction:**
-#'     Performs differential expression analysis and Gene Set Enrichment Analysis (GSEA)
-#'     to identify enriched pathways and subsequently computes Jaccard indices
-#'     to quantify overlap between core enrichment genes of significant pathways.
-#'     (This step must run first as its GSEA results are a dependency for other layers).
-#' 2.  **Microbe-Pathway Network Construction:**
-#'     Calculates the relative contributions of microbial taxa to specific functions.
-#' 3.  **Pathway-Metabolite Network Construction:**
-#'     Computes correlations between pathway abundances and metabolite concentrations,
-#'     optionally filtering results based on GSEA findings and statistical significance.
-#' 4.  **Multi-Layered Network Construction:**
-#'     Integrates the various network layers into a single comprehensive network,
-#'     using each GSEA result as a filter for generating a distinct multi-layered network.
-#'
-#' @param abundance_file A character string specifying the path to the
-#'   gene abundance data file. The first column should be gene IDs,
-#'   and subsequent columns should be sample counts (integers).
-#' @param metadata_file A character string specifying the path to the sample metadata file.
-#'   Must include 'SampleID' and 'class' columns.
-#' @param map_file A character string specifying the path to the
-#'   pathway-to-gene mapping file (e.g., KEGG_pathways_to_KO.csv).
-#' @param contrib_file A character string specifying the path to the contribution data file
-#'   for microbe-pathway network construction. Expected columns include 'SampleID', 'FeatureID',
-#'   'FunctionID', and 'taxon_function_abun'.
-#' @param taxonomy_file A character string specifying the path to the taxonomy data file
-#'   for microbe-pathway network construction. Expected columns include 'FeatureID' and 'TaxonID'.
-#' @param pathway_abundance_file A character string specifying the path to the
-#'   pathway abundance data file for pathway-metabolite network construction.
-#'   Expected: Pathways as rows, samples as columns, with the first column being pathway IDs.
-#' @param metabolite_concentration_file A character string specifying the path
-#'   to the metabolite concentration data file for pathway-metabolite network construction.
-#'   Expected: Samples as rows, metabolites as columns, with the first column being sample IDs.
-#' @param base_output_directory A character string specifying the base directory
-#'   where all output files will be saved. Subdirectories for each network type
-#'   will be created within this directory.
-#' @param file_type A character string indicating the type of input files for all steps.
-#'   Must be "csv" (for comma-separated) or "tsv" (for tab-separated).
-#' @param ppn_pvalueCutoff A numeric value specifying the adjusted p-value cutoff
-#'   for determining significance in GSEA results within `construct_pathway_pathway_network`.
-#' @param ppn_pAdjustMethod A character string specifying the method for p-value
-#'   adjustment within `construct_pathway_pathway_network`.
-#'   Must be one of "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".
-#' @param ppn_rank_by A character string specifying the method to rank genes for GSEA
-#'   within `construct_pathway_pathway_network`.
-#'   Must be either "signed_log_pvalue" or "log2FoldChange".
-#' @param mpn_filtering A character string specifying the filtering method to apply
-#'   for microbe-pathway network construction. Must be one of "unfiltered", "mean",
-#'   "median", "top10%", "top25%", "top50%", or "top75%". "unfiltered" means no filtering is applied.
-#' @param pmn_correlation_method A character string specifying the correlation method
-#'   for pathway-metabolite network construction. Must be "spearman" or "pearson".
-#' @param pmn_filter_by A character string specifying how to filter the correlation
-#'   results for pathway-metabolite network construction. Must be "none", "p_value", or "q_value".
-#' @param pmn_corr_cutoff A numeric value specifying the absolute correlation
-#'   coefficient cutoff for pathway-metabolite network construction.
-#' @param pmn_p_value_cutoff A numeric value specifying the p-value cutoff for
-#'   pathway-metabolite network construction. Required if `pmn_filter_by` is "p_value".
-#' @param pmn_q_value_cutoff A numeric value specifying the q-value (adjusted p-value)
-#'   cutoff for pathway-metabolite network construction. Required if `pmn_filter_by` is "q_value".
-#' @param pmn_q_adjust_method A character string specifying the method for q-value
-#'   (p-value) adjustment for pathway-metabolite network construction.
-#'   Must be "bonferroni" or "fdr". Used if `pmn_filter_by` is "q_value".
-#' @return A character vector of paths to the final integrated multi-layered network CSV files.
+#' @param gene_abun_file Character path to gene abundance file.
+#' @param path_abun_file Character path to pathway abundance file.
+#' @param path_con_file Character path to pathway contribution file.
+#' @param met_con_file Character path to metabolite concentration file.
+#' @param metadata_file Character path to metadata file (Must contain 'SampleID' and 'class').
+#' @param taxonomy_file Character path to taxonomy file (Required for 'picrust').
+#' @param map_file Character path to pathway-to-gene mapping file.
+#' @param output_dir Character path to output directory.
+#' @param format Input format options: "universal", "humann", "picrust".
+#' @param da_method DA method options: "deseq2", "edger", "maaslin2", "simple".
+#' @param map_database Database options: "kegg", "metacyc".
+#' @param ppn_rank_by GSEA ranking options: "signed_log_pvalue", "log2foldchange", "pvalue".
+#' @param ppn_p_adjust_method GSEA p-adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".
+#' @param ppn_pvalue_cutoff Numeric p-value cutoff for GSEA.
+#' @param ppn_jaccard_cutoff Numeric Jaccard cutoff for PPN edges.
+#' @param ppn_min_gs_size Numeric min gene set size.
+#' @param ppn_max_gs_size Numeric max gene set size.
+#' @param ppn_eps Numeric GSEA epsilon.
+#' @param mpn_filtering MPN filtering options: "unfiltered", "mean", "median", "top10%", "top25%", "top50%", "top75%".
+#' @param pmn_corr_method Correlation options: "spearman", "pearson", "kendall".
+#' @param pmn_filter_by Filter options: "none", "p_value", "q_value".
+#' @param pmn_corr_cutoff Numeric correlation cutoff.
+#' @param pmn_pvalue_cutoff Numeric p-value cutoff.
+#' @param pmn_q_value_cutoff Numeric q-value cutoff.
+#' @param pmn_p_adjust_method PMN q-value adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".
+#' @return Vector of final network file paths.
 #' @export
-con_mln_all <- function(
-  abundance_file,
-  metadata_file,
-  map_file,
-  contrib_file,
-  taxonomy_file,
-  pathway_abundance_file,
-  metabolite_concentration_file,
-  base_output_directory,
-  file_type = c("csv", "tsv"),
-  ppn_pvalueCutoff,
-  ppn_pAdjustMethod = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none"),
-  ppn_rank_by = c("signed_log_pvalue", "log2FoldChange"),
-  mpn_filtering = c("unfiltered", "mean", "median", "top10%", "top25%", "top50%", "top75%"),
-  pmn_correlation_method = c("spearman", "pearson"),
-  pmn_filter_by = c("none", "p_value", "q_value"),
-  pmn_corr_cutoff,
-  pmn_p_value_cutoff = NULL,
-  pmn_q_value_cutoff = NULL,
-  pmn_q_adjust_method = NULL
+con_mln <- function(
+    gene_abun_file,
+    path_abun_file,
+    path_con_file,
+    met_con_file,
+    metadata_file,
+    taxonomy_file = NULL,
+    map_file,
+    output_dir,
+    format = c("universal", "humann", "picrust"),
+    da_method = c("deseq2", "edger", "maaslin2", "simple"),
+    map_database = c("kegg", "metacyc"),
+    ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
+    ppn_p_adjust_method = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none"),
+    ppn_pvalue_cutoff = 0.05,
+    ppn_jaccard_cutoff = 0.2,
+    ppn_min_gs_size = 10,
+    ppn_max_gs_size = 500,
+    ppn_eps = 1e-10,
+    mpn_filtering = c("unfiltered", "mean", "median", "top10%", "top25%", "top50%", "top75%"),
+    pmn_corr_method = c("spearman", "pearson", "kendall"),
+    pmn_filter_by = c("none", "p_value", "q_value"),
+    pmn_corr_cutoff = 0.3,
+    pmn_pvalue_cutoff = 0.05,
+    pmn_q_value_cutoff = 0.05,
+    pmn_p_adjust_method = "fdr"
 ) {
-  file_type <- match.arg(file_type)
-  ppn_pAdjustMethod <- match.arg(ppn_pAdjustMethod)
-  ppn_rank_by <- match.arg(ppn_rank_by)
-  mpn_filtering <- match.arg(mpn_filtering)
-  pmn_correlation_method <- match.arg(pmn_correlation_method)
-  pmn_filter_by <- match.arg(pmn_filter_by)
-  if (!is.null(pmn_q_adjust_method)) {
-    pmn_q_adjust_method <- match.arg(pmn_q_adjust_method)
+  format <- match.arg(format)
+  da_method <- match.arg(da_method)
+  map_database <- match.arg(map_database)
+
+  if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+
+  message("--- Preprocessing Data (Format: ", format, ") ---")
+
+  processed_contrib_file <- file.path(output_dir, "processed_contribution.csv")
+
+  if (format == "universal") {
+    df <- read.csv(path_con_file, stringsAsFactors = FALSE)
+    required <- c("SampleID", "PathwayID", "TaxonID", "contribution")
+    if (!all(required %in% colnames(df))) stop("Universal format requires columns: ", paste(required, collapse=", "))
+
+    colnames(df)[colnames(df) == "contribution"] <- "taxon_function_abun"
+    colnames(df)[colnames(df) == "PathwayID"] <- "FunctionID"
+    colnames(df)[colnames(df) == "TaxonID"] <- "FeatureID"
+    df$TaxonID <- df$FeatureID
+    write.csv(df, processed_contrib_file, row.names = FALSE)
+
+    processed_taxonomy_file <- file.path(output_dir, "processed_taxonomy.csv")
+    dummy_tax <- data.frame(FeatureID = unique(df$FeatureID), TaxonID = unique(df$FeatureID))
+    write.csv(dummy_tax, processed_taxonomy_file, row.names = FALSE)
+    taxonomy_file <- processed_taxonomy_file
+
+  } else if (format == "picrust") {
+    if (is.null(taxonomy_file)) stop("Taxonomy file is required for PICRUSt format.")
+    contrib <- read.csv(path_con_file, stringsAsFactors = FALSE)
+    tax <- read.csv(taxonomy_file, stringsAsFactors = FALSE)
+
+    merged <- merge(contrib, tax, by = "FeatureID")
+    final_df <- merged[, c("SampleID", "PathwayID", "FeatureID", "TaxonID", "taxon_function_abun")]
+    colnames(final_df)[colnames(final_df) == "PathwayID"] <- "FunctionID"
+    write.csv(final_df, processed_contrib_file, row.names = FALSE)
+
+  } else if (format == "humann") {
+    df <- read.csv(path_con_file, stringsAsFactors = FALSE, check.names = FALSE)
+    sample_cols <- colnames(df)[-1]
+    long_df <- tidyr::pivot_longer(df, cols = dplyr::all_of(sample_cols), names_to = "SampleID", values_to = "taxon_function_abun")
+
+    col1_name <- colnames(df)[1]
+    long_df <- long_df[grep("\\|", long_df[[col1_name]]), ]
+    split_data <- stringr::str_split_fixed(long_df[[col1_name]], "\\|", 2)
+    long_df$FunctionID <- split_data[, 1]
+    long_df$FeatureID <- split_data[, 2]
+    long_df$TaxonID <- long_df$FeatureID
+
+    final_df <- long_df[, c("SampleID", "FunctionID", "FeatureID", "TaxonID", "taxon_function_abun")]
+    write.csv(final_df, processed_contrib_file, row.names = FALSE)
+
+    processed_taxonomy_file <- file.path(output_dir, "processed_taxonomy.csv")
+    dummy_tax <- data.frame(FeatureID = unique(final_df$FeatureID), TaxonID = unique(final_df$FeatureID))
+    write.csv(dummy_tax, processed_taxonomy_file, row.names = FALSE)
+    taxonomy_file <- processed_taxonomy_file
   }
 
-  # Create base output directory if it doesn't exist
-  if (!dir.exists(base_output_directory)) {
-    dir.create(base_output_directory, recursive = TRUE)
-    message("Created base output directory: ", base_output_directory)
-  }
-
-  # Define output directories for each step
-  ppn_output_dir <- file.path(base_output_directory, "pathway_pathway_network_output")
-  mpn_output_dir <- file.path(base_output_directory, "microbe_pathway_network_output")
-  pmn_output_dir <- file.path(base_output_directory, "pathway_metabolite_network_output")
-  multi_layered_output_dir <- file.path(base_output_directory, "multi_layered_network_final")
-
-  # Ensure all sub-directories exist
-  if (!dir.exists(ppn_output_dir)) dir.create(ppn_output_dir, recursive = TRUE)
-  if (!dir.exists(mpn_output_dir)) dir.create(mpn_output_dir, recursive = TRUE)
-  if (!dir.exists(pmn_output_dir)) dir.create(pmn_output_dir, recursive = TRUE)
-  if (!dir.exists(multi_layered_output_dir)) dir.create(multi_layered_output_dir, recursive = TRUE)
-
-
-  # --- Step 1: Construct Pathway-Pathway Network ---
-  message("\n--- Step 1/4: Constructing Pathway-Pathway Network ---")
+  ppn_dir <- file.path(output_dir, "ppn_output")
   ppn_results <- con_ppn_int(
-    abundance_file = abundance_file,
+    gene_abun_file = gene_abun_file,
     metadata_file = metadata_file,
     map_file = map_file,
-    output_file = ppn_output_dir,
-    file_type = file_type,
-    pvalueCutoff = ppn_pvalueCutoff,
-    pAdjustMethod = ppn_pAdjustMethod,
-    rank_by = ppn_rank_by
+    output_dir = ppn_dir,
+    da_method = da_method,
+    map_database = map_database,
+    rank_by = ppn_rank_by,
+    p_adjust_method = ppn_p_adjust_method,
+    pvalue_cutoff = ppn_pvalue_cutoff,
+    jaccard_cutoff = ppn_jaccard_cutoff,
+    min_gs_size = ppn_min_gs_size,
+    max_gs_size = ppn_max_gs_size,
+    eps = ppn_eps
   )
 
-  gsea_results_paths <- ppn_results$gsea_paths
-  jaccard_results_paths <- ppn_results$jaccard_paths
+  gsea_files <- ppn_results$gsea_paths
+  jaccard_files <- ppn_results$jaccard_paths
 
-  if (is.null(gsea_results_paths) || length(gsea_results_paths) == 0) {
-    stop("Pathway-Pathway Network construction did not generate any GSEA results. Cannot proceed with multi-layered network construction.")
-  }
+  if (length(gsea_files) == 0) stop("No significant GSEA results found.")
 
-  # Initialize a list to store paths of all generated multi-layered networks
-  all_integrated_network_paths <- list()
+  final_networks <- c()
 
-  # Loop through each GSEA comparison result
-  for (i in seq_along(gsea_results_paths)) {
-    current_gsea_file <- gsea_results_paths[i]
-    current_jaccard_file <- jaccard_results_paths[i] # Assuming Jaccard files align with GSEA files
+  for (i in seq_along(gsea_files)) {
+    curr_gsea <- gsea_files[i]
+    curr_jaccard <- jaccard_files[i]
 
-    message(paste0("\n--- Processing GSEA comparison: ", basename(current_gsea_file), " ---"))
+    message("\nProcessing integration for: ", basename(curr_gsea))
 
-    # --- Step 2: Construct Microbe-Pathway Network ---
-    # This step is run for each GSEA comparison to ensure relevant filtering is applied if needed.
-    # Note: The current MPN function doesn't take GSEA as a direct filter.
-    # If it needs to be filtered by GSEA, that logic would need to be in internal_microbe_pathway_network.R
-    # or a specific MPN file should be chosen here based on the GSEA comparison.
-    # For now, we assume MPN output is general or chosen outside this loop if GSEA-specific.
-    message("\n--- Step 2/4: Constructing Microbe-Pathway Network ---")
-    mpn_output_paths <- con_mpn_int(
-      contrib_file = contrib_file,
+    mpn_dir <- file.path(output_dir, "mpn_output")
+    mpn_files <- con_mpn_int(
+      path_con_file = processed_contrib_file,
       metadata_file = metadata_file,
       taxonomy_file = taxonomy_file,
-      output_file = mpn_output_dir,
-      file_type = file_type,
-      filtering = mpn_filtering
+      output_dir = mpn_dir,
+      mpn_filtering = mpn_filtering
     )
+    curr_mpn <- mpn_files[1]
 
-    if (is.null(mpn_output_paths) || length(mpn_output_paths) == 0) {
-      warning("Microbe-Pathway Network construction did not generate any output files. This layer might be empty in the multi-layered network.")
-      selected_microbe_pathway_file <- NULL
-    } else {
-      # Select the microbe-pathway file. If MPN also produces multiple files
-      # (e.g., by class), you might need more complex logic here to select the
-      # appropriate one for the current GSEA comparison.
-      # For simplicity, if MPN output is general for all comparisons, pick the first.
-      selected_microbe_pathway_file <- mpn_output_paths[1]
-      message("Selected Microbe-Pathway file for integration: ", selected_microbe_pathway_file)
-    }
-
-    # --- Step 3: Construct Pathway-Metabolite Network ---
-    message("\n--- Step 3/4: Constructing Pathway-Metabolite Network ---")
-    pmn_output_paths <- con_pmn_int(
-      pathway_abundance_file = pathway_abundance_file,
-      metabolite_concentration_file = metabolite_concentration_file,
-      gsea_results_file = current_gsea_file, # Use the current GSEA file for filtering
+    pmn_dir <- file.path(output_dir, "pmn_output")
+    pmn_files <- con_pmn_int(
+      path_abun_file = path_abun_file,
+      met_con_file = met_con_file,
+      gsea_file = curr_gsea,
       metadata_file = metadata_file,
-      output_file = pmn_output_dir,
-      file_type = file_type,
-      correlation_method = pmn_correlation_method,
-      filter_by = pmn_filter_by,
+      output_dir = pmn_dir,
+      corr_method = pmn_corr_method,
+      pmn_filter_by = pmn_filter_by,
       corr_cutoff = pmn_corr_cutoff,
-      p_value_cutoff = pmn_p_value_cutoff,
+      pvalue_cutoff = pmn_pvalue_cutoff,
       q_value_cutoff = pmn_q_value_cutoff,
-      q_adjust_method = pmn_q_adjust_method
+      p_adjust_method = pmn_p_adjust_method
     )
+    curr_pmn <- pmn_files[1]
 
-    if (is.null(pmn_output_paths) || length(pmn_output_paths) == 0) {
-      warning("Pathway-Metabolite Network construction did not generate any output files for this GSEA comparison. This layer might be empty in the multi-layered network.")
-      selected_pathway_metabolite_file <- NULL
-    } else {
-      # Select the pathway-metabolite file. It's likely that pmn_output_paths
-      # will contain only one file that corresponds to the current GSEA comparison
-      # due to the 'gsea_results_file' parameter. If it produces multiple (e.g., per group),
-      # you might need to select the appropriate one.
-      # Assuming only one relevant file is produced or the first is sufficient.
-      selected_pathway_metabolite_file <- pmn_output_paths[1] # Use the first PMN file that was just generated for this GSEA
-      message("Selected Pathway-Metabolite file for integration: ", selected_pathway_metabolite_file)
-    }
-
-
-    # --- Step 4: Construct Multi-Layered Network (Integrates all previous layers) ---
-    message("\n--- Step 4/4: Constructing Multi-Layered Network for current GSEA comparison ---")
-    final_multi_layered_network_path <- con_mln_int( # Call internal version
-      gsea_results_file = current_gsea_file, # Use the current GSEA file
-      microbe_pathway_file = selected_microbe_pathway_file, # Use selected MPN file from Step 2
-      pathway_jaccard_file = current_jaccard_file, # Use the current Jaccard file
-      pathway_metabolite_file = selected_pathway_metabolite_file, # Use selected PMN file from Step 3
-      output_directory = multi_layered_output_dir,
-      file_type = file_type
+    mln_dir <- file.path(output_dir, "mln_final")
+    final_net <- con_mln_int(
+      gsea_file = curr_gsea,
+      mpn_file = curr_mpn,
+      ppn_file = curr_jaccard,
+      pmn_file = curr_pmn,
+      output_dir = mln_dir
     )
-
-    if (!is.null(final_multi_layered_network_path)) {
-      all_integrated_network_paths <- c(all_integrated_network_paths, final_multi_layered_network_path)
-    }
+    final_networks <- c(final_networks, final_net)
   }
 
-  message("\nMulti-layered network construction complete for all GSEA comparisons.")
-  # Return all generated multi-layered network paths
-  return(invisible(unlist(all_integrated_network_paths)))
+  message("Multi-Layered Network Pipeline Complete.")
+  return(final_networks)
 }
