@@ -2,41 +2,31 @@
 % Please edit documentation in R/internal_microbe_pathway_network.R
 \name{con_mpn_int}
 \alias{con_mpn_int}
-\title{Internal helper for Microbe-pathway network construction}
+\title{Internal Microbe-Pathway Network Helper}
 \usage{
 con_mpn_int(
-  contrib_file,
+  path_con_file,
   metadata_file,
   taxonomy_file,
-  output_file,
-  file_type = c("csv", "tsv"),
-  filtering = c("unfiltered", "mean", "median", "top10\%", "top25\%", "top50\%",
-    "top75\%")
+  output_dir,
+  mpn_filtering = "top10\%"
 )
 }
 \arguments{
-\item{contrib_file}{A character string specifying the path to the contribution data file.}
+\item{path_con_file}{Character path to processed contribution file.}
 
-\item{metadata_file}{A character string specifying the path to the sample metadata file.}
+\item{metadata_file}{Character path to metadata file.}
 
-\item{taxonomy_file}{A character string specifying the path to the taxonomy data file.}
+\item{taxonomy_file}{Character path to taxonomy file.}
 
-\item{output_file}{A character string specifying the path to the directory
-where the output CSV files will be saved.}
+\item{output_dir}{Character path to output directory.}
 
-\item{file_type}{A character string indicating the type of input files.}
-
-\item{filtering}{A character string specifying the filtering method to apply.}
+\item{mpn_filtering}{Filtering options: "unfiltered", "mean", "median", "top10%", "top25%", "top50%", "top75%".}
 }
 \value{
-A character vector of paths to the generated microbe-pathway network CSV files.
+Vector of MPN file paths.
 }
 \description{
-This function processes microbial contribution, metadata, and taxonomy data
-to construct a microbe-pathway network, calculating relative contributions
-of taxa to specific functions. It supports various filtering options
-to focus on the most significant contributions. This is an internal function
-primarily used by `con_mln_all` and wrapped by
-`con_mpn`.
+Calculates relative contribution of taxa to functions.
 }
 \keyword{internal}

@@ -1,307 +1,148 @@
-# R/internal_pathway_pathway_network.R
-
-#' Internal helper for Pathway-pathway network construction
+#' Internal Pathway-Pathway Network Helper
 #'
-#' This function performs differential expression analysis (using DESeq2) and
-#' Gene Set Enrichment Analysis (GSEA) to identify enriched pathways and
-#' subsequently computes Jaccard indices to quantify overlap between core
-#' enrichment genes of significant pathways. This is an internal function
-#' primarily used by `con_mln` and wrapped by
-#' `con_ppn`.
+#' Runs DA, GSEA, and Jaccard index calculation.
 #'
-#' @param abundance_file A character string specifying the path to the
-#'   gene abundance data file.
-#' @param metadata_file A character string specifying the path to the sample metadata file.
-#' @param map_file A character string specifying the path to the
-#'   pathway-to-gene mapping file.
-#' @param output_file A character string specifying the path to the directory
-#'   where output CSV files (GSEA results and Jaccard indices) will be saved.
-#' @param file_type A character string indicating the type of input files.
-#' @param pvalueCutoff A numeric value specifying the adjusted p-value cutoff
-#'   for determining significance in GSEA results.
-#' @param pAdjustMethod A character string specifying the method for p-value
-#'   adjustment.
-#' @param rank_by A character string specifying the method to rank genes for GSEA.
-#' @return A list containing:
-#'   \describe{
-#'     \item{gsea_paths}{A character vector of paths to the generated GSEA results CSV files.}
-#'     \item{jaccard_paths}{A character vector of paths to the generated Pathway-Pathway Jaccard index CSV files.}
-#'   }
+#' @param gene_abun_file Character path to gene abundance file.
+#' @param metadata_file Character path to metadata file.
+#' @param map_file Character path to mapping file.
+#' @param output_dir Character path to output directory.
+#' @param da_method DA method options: "deseq2", "edger", "maaslin2", "simple".
+#' @param map_database Database options: "kegg", "metacyc".
+#' @param rank_by GSEA ranking options: "signed_log_pvalue", "log2foldchange", "pvalue".
+#' @param p_adjust_method GSEA p-adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".
+#' @param pvalue_cutoff Numeric p-value cutoff.
+#' @param jaccard_cutoff Numeric Jaccard cutoff.
+#' @param min_gs_size Numeric min gene set size.
+#' @param max_gs_size Numeric max gene set size.
+#' @param eps Numeric GSEA epsilon.
+#' @return List of GSEA and Jaccard file paths.
 #' @keywords internal
 con_ppn_int <- function(
-  abundance_file,
-  metadata_file,
-  map_file,
-  output_file,
-  file_type = c("csv", "tsv"),
-  pvalueCutoff,
-  pAdjustMethod = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none"),
-  rank_by = c("signed_log_pvalue", "log2FoldChange")
+    gene_abun_file,
+    metadata_file,
+    map_file,
+    output_dir,
+    da_method = c("deseq2", "edger", "maaslin2", "simple"),
+    map_database = c("kegg", "metacyc"),
+    rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
+    p_adjust_method = "fdr",
+    pvalue_cutoff = 0.05,
+    jaccard_cutoff = 0.2,
+    min_gs_size = 10,
+    max_gs_size = 500,
+    eps = 1e-10
 ) {
-  # Validate inputs
-  file_type <- match.arg(file_type)
-  pAdjustMethod <- match.arg(pAdjustMethod)
+  da_method <- match.arg(da_method)
+  map_database <- match.arg(map_database)
   rank_by <- match.arg(rank_by)
 
-  message("Starting internal pathway-pathway network construction.")
-  message("Using p-value cutoff: ", pvalueCutoff, " and p-adjustment method: ", pAdjustMethod, ".")
-  message("Genes will be ranked by: ", rank_by, ".")
+  if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-  # Create output directory if it doesn't exist
-  if (!dir.exists(output_file)) {
-    dir.create(output_file, recursive = TRUE)
-    message("Created output directory: ", output_file)
-  } else {
-    message("Output directory already exists: ", output_file)
-  }
+  abun <- read.csv(gene_abun_file, row.names = 1, check.names = FALSE)
+  meta <- read.csv(metadata_file, stringsAsFactors = FALSE)
 
-  # 1. Load abundance data from provided file
-  message("1. Loading abundance data from: ", abundance_file)
-  gene_abundance <- tryCatch(
-    read_input_file(abundance_file, file_type = file_type, header = TRUE, row.names = 1, stringsAsFactors = FALSE),
-    error = function(e) {
-      stop(paste("Error loading abundance file '", abundance_file, "': ", e$message, sep = ""))
-    }
-  )
-  message("    Loaded abundance data. Dimensions: ", paste(dim(gene_abundance), collapse = "x"))
+  common_samples <- intersect(colnames(abun), meta$SampleID)
+  abun <- abun[, common_samples]
+  meta <- meta[meta$SampleID %in% common_samples, ]
+  rownames(meta) <- meta$SampleID
 
-  # 2. Load sample metadata
-  message("2. Loading sample metadata from: ", metadata_file)
-  metadata <- tryCatch(
-    read_input_file(metadata_file, file_type = file_type, header = TRUE, stringsAsFactors = FALSE),
-    error = function(e) {
-      stop(paste("Error loading metadata file '", metadata_file, "': ", e$message, sep = ""))
-    }
-  )
-  message("    Loaded metadata. Dimensions: ", paste(dim(metadata), collapse = "x"))
-
-  # Ensure the correct SampleID and class columns are present
-  if (!"SampleID" %in% colnames(metadata)) {
-    stop("The 'sample_metadata.csv' file must contain a 'SampleID' column.")
-  }
-  if (!"class" %in% colnames(metadata)) {
-    stop("The 'sample_metadata.csv' file must contain a 'class' column for group definition.")
-  }
-
-  # 3. Filter metadata samples present in abundance data
-  message("3. Filtering metadata to match samples in abundance data...")
-  sample_ids <- colnames(gene_abundance)
-  initial_metadata_rows <- nrow(metadata)
-  metadata <- dplyr::filter(metadata, SampleID %in% sample_ids)
-  message("    Filtered metadata. Kept ", nrow(metadata), " out of ", initial_metadata_rows, " samples.")
-
-  # 4. Set 'condition' factor from 'class' column
-  message("4. Setting 'condition' factor from 'class' column and aligning data...")
-  metadata$condition <- as.factor(metadata$class)
-  rownames(metadata) <- metadata$SampleID # Use SampleID for row names
-
-  # 5. Round abundance counts for DESeq2 compatibility and ensure sample order
-  message("5. Rounding abundance counts and aligning sample order for DESeq2...")
-  gene_abundance_rounded <- round(gene_abundance)
-  gene_abundance_rounded <- gene_abundance_rounded[, rownames(metadata), drop = FALSE] # drop=FALSE to handle single sample case
-  message("    Abundance data ready for DESeq2. Final dimensions: ", paste(dim(gene_abundance_rounded), collapse = "x"))
-
-  # 6. Create DESeq2 dataset and run differential expression analysis
-  message("6. Creating DESeq2 dataset and running differential expression analysis...")
-  dds <- tryCatch(
-    DESeq2::DESeqDataSetFromMatrix(countData = gene_abundance_rounded,
-                                   colData = metadata,
-                                   design = ~ condition),
-    error = function(e) {
-      stop(paste("Error creating DESeq2 dataset: ", e$message, ". Check abundance data (must be integers) and metadata consistency.", sep = ""))
-    }
-  )
-
-  dds <- tryCatch(
-    DESeq2::DESeq(dds),
-    error = function(e) {
-      stop(paste("Error running DESeq2 analysis: ", e$message, ". This might happen if groups have zero variance, or too few samples.", sep = ""))
-    }
-  )
-  message("    DESeq2 analysis complete.")
-
-  # 7. Get all pairwise condition comparisons
-  conditions <- levels(metadata$condition)
-  if (length(conditions) < 2) {
-    stop("Less than two unique conditions found in metadata 'class' column. Cannot perform pairwise comparisons.")
-  }
+  conditions <- unique(meta$class)
   comparisons <- combn(conditions, 2, simplify = FALSE)
-  message("7. Identified ", length(comparisons), " pairwise comparisons: ",
-          paste(sapply(comparisons, function(x) paste(x, collapse = " vs ")), collapse = ", "))
 
-  # 8. Load pathway-to-gene mapping and reshape into TERM2GENE format
-  message("8. Loading pathway-to-gene mapping from: ", map_file)
-  map_raw <- tryCatch(
-    read_input_file(map_file, file_type = file_type, header = FALSE, fill = TRUE, stringsAsFactors = FALSE, skip = 1),
-    error = function(e) {
-      stop(paste("Error loading map file '", map_file, "': ", e$message, ". Ensure it's a valid CSV/TSV.", sep = ""))
-    }
-  )
+  gsea_paths <- c()
+  jaccard_paths <- c()
 
-  TERM2GENE <- dplyr::distinct(
-    dplyr::filter(
-      dplyr::select(
-        tidyr::gather(map_raw, key = "temp_col", value = "gene", -V1),
-        term = V1, gene
-      ),
-      gene != ""
-    )
-  )
-
-  if (nrow(TERM2GENE) == 0) {
-    stop("No valid pathway-gene mappings found after processing '", map_file, "'. Check file format.")
-  }
-  message("    Processed ", nrow(TERM2GENE), " unique pathway-gene mappings.")
-
-  gsea_results_list <- list()
-  gsea_output_paths <- c() # Initialize vector to store GSEA paths
-  jaccard_output_paths <- c() # Initialize vector to store Jaccard paths
-
-  # 9. Loop over each pairwise comparison to run GSEA
-  message("9. Running GSEA for each pairwise comparison...")
-  for (i in seq_along(comparisons)) {
-    comp <- comparisons[[i]]
+  for (comp in comparisons) {
     cond1 <- comp[1]
     cond2 <- comp[2]
-    comparison_name <- paste0(cond1, "_vs_", cond2)
-    message("    Processing comparison (", i, "/", length(comparisons), "): ", cond2, " vs ", cond1)
+    comp_name <- paste0(cond1, "_vs_", cond2)
+    message("Analyzing: ", comp_name)
 
-    # Get DESeq2 results for contrast cond2 vs cond1
-    res <- DESeq2::results(dds, contrast = c("condition", cond2, cond1))
+    sub_meta <- meta[meta$class %in% c(cond1, cond2), ]
+    sub_abun <- abun[, sub_meta$SampleID]
+    res_df <- NULL
 
-    # Prepare ranked gene list
-    ranked_df <- as.data.frame(res[, c("log2FoldChange", "pvalue")])
-    # Filter out NA values for relevant columns before ranking
-    ranked_df <- ranked_df[!is.na(ranked_df$log2FoldChange) & !is.na(ranked_df$pvalue), ]
-
-    if (nrow(ranked_df) == 0) {
-      warning("No valid log2FoldChange or pvalue for comparison ", comparison_name, ". Skipping GSEA.")
-      next
+    if (da_method == "deseq2") {
+      sub_abun_int <- round(sub_abun)
+      dds <- DESeq2::DESeqDataSetFromMatrix(countData = sub_abun_int, colData = sub_meta, design = ~ class)
+      dds <- DESeq2::DESeq(dds)
+      res <- DESeq2::results(dds, contrast = c("class", cond1, cond2))
+      res_df <- as.data.frame(res)
+      res_df$gene <- rownames(res_df)
+    } else if (da_method == "edger") {
+      y <- edgeR::DGEList(counts = sub_abun, group = sub_meta$class)
+      y <- edgeR::calcNormFactors(y)
+      y <- edgeR::estimateDisp(y)
+      et <- edgeR::exactTest(y, pair = c(cond2, cond1))
+      res_df <- et$table
+      res_df$log2FoldChange <- res_df$logFC
+      res_df$pvalue <- res_df$PValue
+      res_df$gene <- rownames(res_df)
+    } else if (da_method == "maaslin2") {
+      fit_data <- Maaslin2::Maaslin2(input_data = sub_abun, input_metadata = sub_meta, output = file.path(output_dir, "maaslin_temp"), fixed_effects = "class", reference = c("class", cond2))
+      res_df <- fit_data$results
+      res_df <- dplyr::rename(res_df, log2FoldChange = coef, pvalue = pval, gene = feature)
+    } else if (da_method == "simple") {
+      grp1_vals <- sub_abun[, sub_meta$class == cond1]
+      grp2_vals <- sub_abun[, sub_meta$class == cond2]
+      pvals <- apply(sub_abun, 1, function(x) {
+        g1 <- x[sub_meta$class == cond1]
+        g2 <- x[sub_meta$class == cond2]
+        wt <- tryCatch(wilcox.test(g1, g2), error = function(e) NA)
+        if(is.list(wt)) wt$p.value else NA
+      })
+      fc <- (rowMeans(grp1_vals) + 1e-6) / (rowMeans(grp2_vals) + 1e-6)
+      log2fc <- log2(fc)
+      res_df <- data.frame(gene = rownames(sub_abun), log2FoldChange = log2fc, pvalue = pvals)
     }
 
-    # Apply chosen ranking method
+    map_raw <- read.csv(map_file, header = FALSE, stringsAsFactors = FALSE)
+    TERM2GENE <- data.frame(term = map_raw[,1], gene = map_raw[,2])
+    res_df <- res_df[!is.na(res_df$pvalue) & !is.na(res_df$log2FoldChange), ]
+
     if (rank_by == "signed_log_pvalue") {
-      # Handle cases where pvalue might be 0, leading to -log10(0) = Inf
-      min_pvalue_for_log <- min(ranked_df$pvalue[ranked_df$pvalue > 0], na.rm = TRUE) / 2
-      ranked_df$pvalue[ranked_df$pvalue == 0] <- min_pvalue_for_log
-      ranked_df$rank <- sign(ranked_df$log2FoldChange) * -log10(ranked_df$pvalue)
-      message("    Ranking by signed -log10(p-value) for ", comparison_name, ".")
-    } else if (rank_by == "log2FoldChange") {
-      ranked_df$rank <- ranked_df$log2FoldChange
-      message("    Ranking by log2FoldChange for ", comparison_name, ".")
+      res_df$rank <- sign(res_df$log2FoldChange) * -log10(res_df$pvalue + 1e-300)
+    } else if (rank_by == "log2foldchange") {
+      res_df$rank <- res_df$log2FoldChange
+    } else {
+      res_df$rank <- -log10(res_df$pvalue + 1e-300)
     }
 
-    ranked_df <- ranked_df[order(ranked_df$rank, decreasing = TRUE), ]
-    geneList <- setNames(ranked_df$rank, rownames(ranked_df))
+    res_df <- res_df[order(res_df$rank, decreasing = TRUE), ]
+    gene_list <- setNames(res_df$rank, res_df$gene)
 
-    # Run GSEA using clusterProfiler
-    gsea_res <- tryCatch(
-      clusterProfiler::GSEA(geneList = geneList,
-                            TERM2GENE = TERM2GENE,
-                            pvalueCutoff = pvalueCutoff,
-                            pAdjustMethod = pAdjustMethod,
-                            seed = TRUE,
-                            verbose = FALSE),
-      error = function(e) {
-        warning(paste("GSEA failed for comparison ", comparison_name, ": ", e$message, ". Skipping.", sep = ""))
-        return(NULL)
-      }
-    )
+    gsea_res <- tryCatch({
+      clusterProfiler::GSEA(gene_list, TERM2GENE = TERM2GENE, pvalueCutoff = pvalue_cutoff, pAdjustMethod = p_adjust_method, minGSSize = min_gs_size, maxGSSize = max_gs_size, eps = eps, verbose = FALSE)
+    }, error = function(e) NULL)
 
-    if (is.null(gsea_res) || nrow(as.data.frame(gsea_res)) == 0) {
-      message("    No significant GSEA results found for ", comparison_name, ".")
-      next
-    }
+    if (!is.null(gsea_res) && nrow(gsea_res) > 0) {
+      gsea_out <- as.data.frame(gsea_res)
+      fname <- paste0("gsea_results_", comp_name, ".csv")
+      fpath <- file.path(output_dir, fname)
+      write.csv(gsea_out, fpath, row.names = FALSE)
+      gsea_paths <- c(gsea_paths, fpath)
 
-    # Save GSEA results dataframe
-    gsea_df <- as.data.frame(gsea_res)
-    key <- comparison_name
-    gsea_results_list[[key]] <- gsea_df
+      sig_paths <- gsea_out$ID
+      genes_list <- strsplit(gsea_out$core_enrichment, "/")
+      names(genes_list) <- sig_paths
+      jaccard_res <- data.frame()
 
-    # --- Construct full output path for GSEA results with parameters ---
-
-    # Format parameters for filename
-    pvalueCutoff_fname <- as.character(pvalueCutoff)
-    pAdjustMethod_fname <- pAdjustMethod
-    rank_by_fname <- rank_by
-
-    gsea_output_filename <- paste0(
-      "gsea_results_", key, "_",
-      pvalueCutoff_fname, "_",
-      pAdjustMethod_fname, "_",
-      rank_by_fname,
-      ".csv"
-    )
-
-    gsea_output_path <- file.path(output_file, gsea_output_filename)
-    write.csv(gsea_df, gsea_output_path, row.names = FALSE)
-    message("    File saved to: ", gsea_output_path)
-    gsea_output_paths <- c(gsea_output_paths, gsea_output_path) # Store path
-  }
-
-  # 10. Compute Jaccard indices between pathways within each comparison's GSEA results
-  message("10. Computing Jaccard indices for overlapping pathways...")
-  jaccard_results_list <- list()
-
-  if (length(gsea_results_list) == 0) {
-    message("    No GSEA results to compute Jaccard indices. Skipping.")
-  } else {
-    for (key in names(gsea_results_list)) {
-      message("    Calculating Jaccard index for comparison: ", key)
-      gsea_df <- gsea_results_list[[key]]
-
-      # Filter for pathways with core enrichment genes (i.e., not empty or NA)
-      gsea_df_filtered <- dplyr::filter(gsea_df, !is.na(core_enrichment) & core_enrichment != "")
-      gene_sets <- strsplit(as.character(gsea_df_filtered$core_enrichment), "/")
-      gene_sets <- lapply(gene_sets, function(x) unique(na.omit(x)))
-
-      n <- length(gene_sets)
-      res_list <- list()
-
-      if (n < 2) { # Ensure there are at least two pathways to compare
-        message(paste("    Less than two significant pathways with core enrichment for comparison '", key, "'. Skipping Jaccard index calculation for this comparison.", sep = ""))
-        next
-      }
-
-      for (i in 1:(n - 1)) {
-        for (j in (i + 1):n) {
-          genes_i <- gene_sets[[i]]
-          genes_j <- gene_sets[[j]]
-
-          # Skip if either gene set is empty
-          if (length(genes_i) == 0 || length(genes_j) == 0) {
-            next
-          }
-
-          intersection <- length(intersect(genes_i, genes_j))
-          union <- length(union(genes_i, genes_j))
-          jaccard <- ifelse(union == 0, 0, intersection / union)
-
-          if (jaccard > 0) {
-            res_list[[length(res_list) + 1]] <- data.frame(
-              FunctionID_1 = gsea_df_filtered$ID[i],
-              FunctionID_2 = gsea_df_filtered$ID[j],
-              jaccard_index = jaccard,
-              comparison = key,
-              stringsAsFactors = FALSE
-            )
+      if (length(genes_list) > 1) {
+        combos <- combn(names(genes_list), 2, simplify = FALSE)
+        for (cb in combos) {
+          u <- length(union(genes_list[[cb[1]]], genes_list[[cb[2]]]))
+          i <- length(intersect(genes_list[[cb[1]]], genes_list[[cb[2]]]))
+          idx <- ifelse(u > 0, i/u, 0)
+          if (idx >= jaccard_cutoff) {
+            jaccard_res <- rbind(jaccard_res, data.frame(FunctionID_1 = cb[1], FunctionID_2 = cb[2], jaccard_index = idx))
           }
         }
       }
-
-      if (length(res_list) > 0) {
-        jaccard_df <- do.call(rbind, res_list)
-        # Construct full output path for Jaccard results using the new format
-        jaccard_output_path <- file.path(output_file, paste0("pathway_pathway_network_from_gsea_", key, ".csv"))
-        write.csv(jaccard_df, jaccard_output_path, row.names = FALSE)
-        message("    File saved to: ", jaccard_output_path)
-        jaccard_output_paths <- c(jaccard_output_paths, jaccard_output_path) # Store path
-      } else {
-        message("    No Jaccard indices > 0 found for comparison '", key, "'. Skipping saving file.")
-      }
+      jname <- paste0("pathway_jaccard_", comp_name, ".csv")
+      jpath <- file.path(output_dir, jname)
+      write.csv(jaccard_res, jpath, row.names = FALSE)
+      jaccard_paths <- c(jaccard_paths, jpath)
     }
   }
-
-  message("Internal pathway-pathway network construction complete.")
-  return(list(gsea_paths = gsea_output_paths, jaccard_paths = jaccard_output_paths)) # Return list of paths
+  return(list(gsea_paths = gsea_paths, jaccard_paths = jaccard_paths))
 }

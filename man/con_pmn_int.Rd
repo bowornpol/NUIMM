@@ -2,65 +2,49 @@
 % Please edit documentation in R/internal_pathway_metabolite_network.R
 \name{con_pmn_int}
 \alias{con_pmn_int}
-\title{Internal helper for Pathway-metabolite network construction}
+\title{Internal Pathway-Metabolite Network Helper}
 \usage{
 con_pmn_int(
-  pathway_abundance_file,
-  metabolite_concentration_file,
-  gsea_results_file,
+  path_abun_file,
+  met_con_file,
+  gsea_file,
   metadata_file,
-  output_file,
-  file_type = c("csv", "tsv"),
-  correlation_method = c("spearman", "pearson"),
-  filter_by = c("none", "p_value", "q_value"),
-  corr_cutoff,
-  p_value_cutoff,
-  q_value_cutoff,
-  q_adjust_method = c("bonferroni", "fdr")
+  output_dir,
+  corr_method = c("spearman", "pearson", "kendall"),
+  pmn_filter_by = "p_value",
+  corr_cutoff = 0.3,
+  pvalue_cutoff = 0.05,
+  q_value_cutoff = 0.05,
+  p_adjust_method = "fdr"
 )
 }
 \arguments{
-\item{pathway_abundance_file}{A character string specifying the path to the
-pathway abundance data file.}
+\item{path_abun_file}{Character path to pathway abundance file.}
 
-\item{metabolite_concentration_file}{A character string specifying the path
-to the metabolite concentration data file.}
+\item{met_con_file}{Character path to metabolite concentration file.}
 
-\item{gsea_results_file}{An optional character string specifying the path
-to a GSEA results file.}
+\item{gsea_file}{Character path to GSEA file.}
 
-\item{metadata_file}{An optional character string specifying the path to the
-sample metadata file.}
+\item{metadata_file}{Character path to metadata file.}
 
-\item{output_file}{A character string specifying the path to the directory
-where the output CSV files will be saved.}
+\item{output_dir}{Character path to output directory.}
 
-\item{file_type}{A character string indicating the type of input files.}
+\item{corr_method}{Correlation options: "spearman", "pearson", "kendall".}
 
-\item{correlation_method}{A character string specifying the correlation method.}
+\item{pmn_filter_by}{Filter options: "none", "p_value", "q_value".}
 
-\item{filter_by}{A character string specifying how to filter the correlation
-results.}
+\item{corr_cutoff}{Numeric correlation cutoff.}
 
-\item{corr_cutoff}{A numeric value specifying the absolute correlation
-coefficient cutoff.}
+\item{pvalue_cutoff}{Numeric p-value cutoff.}
 
-\item{p_value_cutoff}{A numeric value specifying the p-value cutoff.}
+\item{q_value_cutoff}{Numeric q-value cutoff.}
 
-\item{q_value_cutoff}{A numeric value specifying the q-value (adjusted p-value)
-cutoff.}
-
-\item{q_adjust_method}{A character string specifying the method for q-value
-(p-value) adjustment.}
+\item{p_adjust_method}{P-adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".}
 }
 \value{
-A character vector of paths to the generated pathway-metabolite network CSV files.
+Vector of PMN file paths.
 }
 \description{
-This function calculates correlations between pathway abundances and metabolite
-concentrations, optionally filtering results based on GSEA findings and
-statistical significance. This is an internal function primarily used by
-`con_mln_all` and wrapped by
-`con_pmn`.
+Correlates pathway abundance and metabolites.
 }
 \keyword{internal}
