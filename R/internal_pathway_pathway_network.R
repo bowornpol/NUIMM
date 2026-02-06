@@ -6,15 +6,12 @@
 #' @param metadata_file Character path to metadata file.
 #' @param map_file Character path to mapping file.
 #' @param output_dir Character path to output directory.
-#' @param da_method DA method options: "deseq2", "edger", "maaslin2", "simple".
-#' @param map_database Database options: "kegg", "metacyc".
-#' @param rank_by GSEA ranking options: "signed_log_pvalue", "log2foldchange", "pvalue".
-#' @param p_adjust_method GSEA p-adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".
-#' @param pvalue_cutoff Numeric p-value cutoff.
-#' @param jaccard_cutoff Numeric Jaccard cutoff.
-#' @param min_gs_size Numeric min gene set size.
-#' @param max_gs_size Numeric max gene set size.
-#' @param eps Numeric GSEA epsilon.
+#' @param ppn_da_method DA method options: "deseq2", "edger", "maaslin2", "simple".
+#' @param ppn_map_database Database options: "kegg", "metacyc", "custom".
+#' @param ppn_rank_by GSEA ranking options: "signed_log_pvalue", "log2foldchange", "pvalue".
+#' @param ppn_p_adjust_method GSEA p-adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".
+#' @param ppn_pvalue_cutoff Numeric p-value cutoff.
+#' @param ppn_jaccard_cutoff Numeric Jaccard cutoff.
 #' @return List of GSEA and Jaccard file paths.
 #' @keywords internal
 con_ppn_int <- function(
@@ -22,19 +19,16 @@ con_ppn_int <- function(
     metadata_file,
     map_file,
     output_dir,
-    da_method = c("deseq2", "edger", "maaslin2", "simple"),
-    map_database = c("kegg", "metacyc"),
-    rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
-    p_adjust_method = "fdr",
-    pvalue_cutoff = 0.05,
-    jaccard_cutoff = 0.2,
-    min_gs_size = 10,
-    max_gs_size = 500,
-    eps = 1e-10
+    ppn_da_method = c("deseq2", "edger", "maaslin2", "simple"),
+    ppn_map_database = c("kegg", "metacyc", "custom"),
+    ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
+    ppn_p_adjust_method = "fdr",
+    ppn_pvalue_cutoff = 0.05,
+    ppn_jaccard_cutoff = 0.2
 ) {
-  da_method <- match.arg(da_method)
-  map_database <- match.arg(map_database)
-  rank_by <- match.arg(rank_by)
+  ppn_da_method <- match.arg(ppn_da_method)
+  ppn_map_database <- match.arg(ppn_map_database)
+  ppn_rank_by <- match.arg(ppn_rank_by)
 
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
@@ -62,14 +56,14 @@ con_ppn_int <- function(
     sub_abun <- abun[, sub_meta$SampleID]
     res_df <- NULL
 
-    if (da_method == "deseq2") {
+    if (ppn_da_method == "deseq2") {
       sub_abun_int <- round(sub_abun)
       dds <- DESeq2::DESeqDataSetFromMatrix(countData = sub_abun_int, colData = sub_meta, design = ~ class)
       dds <- DESeq2::DESeq(dds)
       res <- DESeq2::results(dds, contrast = c("class", cond1, cond2))
       res_df <- as.data.frame(res)
       res_df$gene <- rownames(res_df)
-    } else if (da_method == "edger") {
+    } else if (ppn_da_method == "edger") {
       y <- edgeR::DGEList(counts = sub_abun, group = sub_meta$class)
       y <- edgeR::calcNormFactors(y)
       y <- edgeR::estimateDisp(y)
@@ -78,11 +72,11 @@ con_ppn_int <- function(
       res_df$log2FoldChange <- res_df$logFC
       res_df$pvalue <- res_df$PValue
       res_df$gene <- rownames(res_df)
-    } else if (da_method == "maaslin2") {
+    } else if (ppn_da_method == "maaslin2") {
       fit_data <- Maaslin2::Maaslin2(input_data = sub_abun, input_metadata = sub_meta, output = file.path(output_dir, "maaslin_temp"), fixed_effects = "class", reference = c("class", cond2))
       res_df <- fit_data$results
       res_df <- dplyr::rename(res_df, log2FoldChange = coef, pvalue = pval, gene = feature)
-    } else if (da_method == "simple") {
+    } else if (ppn_da_method == "simple") {
       grp1_vals <- sub_abun[, sub_meta$class == cond1]
       grp2_vals <- sub_abun[, sub_meta$class == cond2]
       pvals <- apply(sub_abun, 1, function(x) {
@@ -100,9 +94,9 @@ con_ppn_int <- function(
     TERM2GENE <- data.frame(term = map_raw[,1], gene = map_raw[,2])
     res_df <- res_df[!is.na(res_df$pvalue) & !is.na(res_df$log2FoldChange), ]
 
-    if (rank_by == "signed_log_pvalue") {
+    if (ppn_rank_by == "signed_log_pvalue") {
       res_df$rank <- sign(res_df$log2FoldChange) * -log10(res_df$pvalue + 1e-300)
-    } else if (rank_by == "log2foldchange") {
+    } else if (ppn_rank_by == "log2foldchange") {
       res_df$rank <- res_df$log2FoldChange
     } else {
       res_df$rank <- -log10(res_df$pvalue + 1e-300)
@@ -112,7 +106,7 @@ con_ppn_int <- function(
     gene_list <- setNames(res_df$rank, res_df$gene)
 
     gsea_res <- tryCatch({
-      clusterProfiler::GSEA(gene_list, TERM2GENE = TERM2GENE, pvalueCutoff = pvalue_cutoff, pAdjustMethod = p_adjust_method, minGSSize = min_gs_size, maxGSSize = max_gs_size, eps = eps, verbose = FALSE)
+      clusterProfiler::GSEA(gene_list, TERM2GENE = TERM2GENE, pvalueCutoff = ppn_pvalue_cutoff, pAdjustMethod = ppn_p_adjust_method, verbose = FALSE)
     }, error = function(e) NULL)
 
     if (!is.null(gsea_res) && nrow(gsea_res) > 0) {
@@ -133,7 +127,7 @@ con_ppn_int <- function(
           u <- length(union(genes_list[[cb[1]]], genes_list[[cb[2]]]))
           i <- length(intersect(genes_list[[cb[1]]], genes_list[[cb[2]]]))
           idx <- ifelse(u > 0, i/u, 0)
-          if (idx >= jaccard_cutoff) {
+          if (idx >= ppn_jaccard_cutoff) {
             jaccard_res <- rbind(jaccard_res, data.frame(FunctionID_1 = cb[1], FunctionID_2 = cb[2], jaccard_index = idx))
           }
         }

@@ -9,15 +9,12 @@ con_ppn_int(
   metadata_file,
   map_file,
   output_dir,
-  da_method = c("deseq2", "edger", "maaslin2", "simple"),
-  map_database = c("kegg", "metacyc"),
-  rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
-  p_adjust_method = "fdr",
-  pvalue_cutoff = 0.05,
-  jaccard_cutoff = 0.2,
-  min_gs_size = 10,
-  max_gs_size = 500,
-  eps = 1e-10
+  ppn_da_method = c("deseq2", "edger", "maaslin2", "simple"),
+  ppn_map_database = c("kegg", "metacyc", "custom"),
+  ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
+  ppn_p_adjust_method = "fdr",
+  ppn_pvalue_cutoff = 0.05,
+  ppn_jaccard_cutoff = 0.2
 )
 }
 \arguments{
@@ -29,23 +26,17 @@ con_ppn_int(
 
 \item{output_dir}{Character path to output directory.}
 
-\item{da_method}{DA method options: "deseq2", "edger", "maaslin2", "simple".}
+\item{ppn_da_method}{DA method options: "deseq2", "edger", "maaslin2", "simple".}
 
-\item{map_database}{Database options: "kegg", "metacyc".}
+\item{ppn_map_database}{Database options: "kegg", "metacyc", "custom".}
 
-\item{rank_by}{GSEA ranking options: "signed_log_pvalue", "log2foldchange", "pvalue".}
+\item{ppn_rank_by}{GSEA ranking options: "signed_log_pvalue", "log2foldchange", "pvalue".}
 
-\item{p_adjust_method}{GSEA p-adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".}
+\item{ppn_p_adjust_method}{GSEA p-adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".}
 
-\item{pvalue_cutoff}{Numeric p-value cutoff.}
+\item{ppn_pvalue_cutoff}{Numeric p-value cutoff.}
 
-\item{jaccard_cutoff}{Numeric Jaccard cutoff.}
-
-\item{min_gs_size}{Numeric min gene set size.}
-
-\item{max_gs_size}{Numeric max gene set size.}
-
-\item{eps}{Numeric GSEA epsilon.}
+\item{ppn_jaccard_cutoff}{Numeric Jaccard cutoff.}
 }
 \value{
 List of GSEA and Jaccard file paths.

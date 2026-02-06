@@ -15,16 +15,13 @@ con_mln(
   map_file,
   output_dir,
   format = c("universal", "humann", "picrust"),
-  da_method = c("deseq2", "edger", "maaslin2", "simple"),
-  map_database = c("kegg", "metacyc"),
+  ppn_da_method = c("deseq2", "edger", "maaslin2", "simple"),
+  ppn_map_database = c("kegg", "metacyc", "custom"),
   ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
   ppn_p_adjust_method = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY",
     "none"),
   ppn_pvalue_cutoff = 0.05,
   ppn_jaccard_cutoff = 0.2,
-  ppn_min_gs_size = 10,
-  ppn_max_gs_size = 500,
-  ppn_eps = 1e-10,
   mpn_filtering = c("unfiltered", "mean", "median", "top10\%", "top25\%", "top50\%",
     "top75\%"),
   pmn_corr_method = c("spearman", "pearson", "kendall"),
@@ -45,16 +42,13 @@ con_mln(
   map_file,
   output_dir,
   format = c("universal", "humann", "picrust"),
-  da_method = c("deseq2", "edger", "maaslin2", "simple"),
-  map_database = c("kegg", "metacyc"),
+  ppn_da_method = c("deseq2", "edger", "maaslin2", "simple"),
+  ppn_map_database = c("kegg", "metacyc", "custom"),
   ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
   ppn_p_adjust_method = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY",
     "none"),
   ppn_pvalue_cutoff = 0.05,
   ppn_jaccard_cutoff = 0.2,
-  ppn_min_gs_size = 10,
-  ppn_max_gs_size = 500,
-  ppn_eps = 1e-10,
   mpn_filtering = c("unfiltered", "mean", "median", "top10\%", "top25\%", "top50\%",
     "top75\%"),
   pmn_corr_method = c("spearman", "pearson", "kendall"),
@@ -84,9 +78,9 @@ con_mln(
 
 \item{format}{Input format options: "universal", "humann", "picrust".}
 
-\item{da_method}{DA method options: "deseq2", "edger", "maaslin2", "simple".}
+\item{ppn_da_method}{DA method options: "deseq2", "edger", "maaslin2", "simple".}
 
-\item{map_database}{Database options: "kegg", "metacyc".}
+\item{ppn_map_database}{Database options: "kegg", "metacyc", "custom".}
 
 \item{ppn_rank_by}{GSEA ranking options: "signed_log_pvalue", "log2foldchange", "pvalue".}
 
@@ -95,12 +89,6 @@ con_mln(
 \item{ppn_pvalue_cutoff}{Numeric p-value cutoff for GSEA.}
 
 \item{ppn_jaccard_cutoff}{Numeric Jaccard cutoff for PPN edges.}
-
-\item{ppn_min_gs_size}{Numeric min gene set size.}
-
-\item{ppn_max_gs_size}{Numeric max gene set size.}
-
-\item{ppn_eps}{Numeric GSEA epsilon.}
 
 \item{mpn_filtering}{MPN filtering options: "unfiltered", "mean", "median", "top10%", "top25%", "top50%", "top75%".}
 

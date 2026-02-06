@@ -10,12 +10,12 @@ con_pmn_int(
   gsea_file,
   metadata_file,
   output_dir,
-  corr_method = c("spearman", "pearson", "kendall"),
+  pmn_corr_method = c("spearman", "pearson", "kendall"),
   pmn_filter_by = "p_value",
-  corr_cutoff = 0.3,
-  pvalue_cutoff = 0.05,
-  q_value_cutoff = 0.05,
-  p_adjust_method = "fdr"
+  pmn_corr_cutoff = 0.3,
+  pmn_pvalue_cutoff = 0.05,
+  pmn_q_value_cutoff = 0.05,
+  pmn_p_adjust_method = "fdr"
 )
 }
 \arguments{
@@ -29,17 +29,17 @@ con_pmn_int(
 
 \item{output_dir}{Character path to output directory.}
 
-\item{corr_method}{Correlation options: "spearman", "pearson", "kendall".}
+\item{pmn_corr_method}{Correlation options: "spearman", "pearson", "kendall".}
 
 \item{pmn_filter_by}{Filter options: "none", "p_value", "q_value".}
 
-\item{corr_cutoff}{Numeric correlation cutoff.}
+\item{pmn_corr_cutoff}{Numeric correlation cutoff.}
 
-\item{pvalue_cutoff}{Numeric p-value cutoff.}
+\item{pmn_pvalue_cutoff}{Numeric p-value cutoff.}
 
-\item{q_value_cutoff}{Numeric q-value cutoff.}
+\item{pmn_q_value_cutoff}{Numeric q-value cutoff.}
 
-\item{p_adjust_method}{P-adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".}
+\item{pmn_p_adjust_method}{P-adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".}
 }
 \value{
 Vector of PMN file paths.
