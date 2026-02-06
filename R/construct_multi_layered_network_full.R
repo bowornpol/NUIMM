@@ -12,15 +12,12 @@
 #' @param map_file Character path to pathway-to-gene mapping file.
 #' @param output_dir Character path to output directory.
 #' @param format Input format options: "universal", "humann", "picrust".
-#' @param da_method DA method options: "deseq2", "edger", "maaslin2", "simple".
-#' @param map_database Database options: "kegg", "metacyc".
+#' @param ppn_da_method DA method options: "deseq2", "edger", "maaslin2", "simple".
+#' @param ppn_map_database Database options: "kegg", "metacyc", "custom".
 #' @param ppn_rank_by GSEA ranking options: "signed_log_pvalue", "log2foldchange", "pvalue".
 #' @param ppn_p_adjust_method GSEA p-adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".
 #' @param ppn_pvalue_cutoff Numeric p-value cutoff for GSEA.
 #' @param ppn_jaccard_cutoff Numeric Jaccard cutoff for PPN edges.
-#' @param ppn_min_gs_size Numeric min gene set size.
-#' @param ppn_max_gs_size Numeric max gene set size.
-#' @param ppn_eps Numeric GSEA epsilon.
 #' @param mpn_filtering MPN filtering options: "unfiltered", "mean", "median", "top10%", "top25%", "top50%", "top75%".
 #' @param pmn_corr_method Correlation options: "spearman", "pearson", "kendall".
 #' @param pmn_filter_by Filter options: "none", "p_value", "q_value".
@@ -40,15 +37,12 @@ con_mln <- function(
     map_file,
     output_dir,
     format = c("universal", "humann", "picrust"),
-    da_method = c("deseq2", "edger", "maaslin2", "simple"),
-    map_database = c("kegg", "metacyc"),
+    ppn_da_method = c("deseq2", "edger", "maaslin2", "simple"),
+    ppn_map_database = c("kegg", "metacyc", "custom"),
     ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
     ppn_p_adjust_method = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none"),
     ppn_pvalue_cutoff = 0.05,
     ppn_jaccard_cutoff = 0.2,
-    ppn_min_gs_size = 10,
-    ppn_max_gs_size = 500,
-    ppn_eps = 1e-10,
     mpn_filtering = c("unfiltered", "mean", "median", "top10%", "top25%", "top50%", "top75%"),
     pmn_corr_method = c("spearman", "pearson", "kendall"),
     pmn_filter_by = c("none", "p_value", "q_value"),
@@ -58,8 +52,8 @@ con_mln <- function(
     pmn_p_adjust_method = "fdr"
 ) {
   format <- match.arg(format)
-  da_method <- match.arg(da_method)
-  map_database <- match.arg(map_database)
+  ppn_da_method <- match.arg(ppn_da_method)
+  ppn_map_database <- match.arg(ppn_map_database)
 
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
@@ -120,15 +114,12 @@ con_mln <- function(
     metadata_file = metadata_file,
     map_file = map_file,
     output_dir = ppn_dir,
-    da_method = da_method,
-    map_database = map_database,
-    rank_by = ppn_rank_by,
-    p_adjust_method = ppn_p_adjust_method,
-    pvalue_cutoff = ppn_pvalue_cutoff,
-    jaccard_cutoff = ppn_jaccard_cutoff,
-    min_gs_size = ppn_min_gs_size,
-    max_gs_size = ppn_max_gs_size,
-    eps = ppn_eps
+    ppn_da_method = ppn_da_method,
+    ppn_map_database = ppn_map_database,
+    ppn_rank_by = ppn_rank_by,
+    ppn_p_adjust_method = ppn_p_adjust_method,
+    ppn_pvalue_cutoff = ppn_pvalue_cutoff,
+    ppn_jaccard_cutoff = ppn_jaccard_cutoff
   )
 
   gsea_files <- ppn_results$gsea_paths
@@ -161,12 +152,12 @@ con_mln <- function(
       gsea_file = curr_gsea,
       metadata_file = metadata_file,
       output_dir = pmn_dir,
-      corr_method = pmn_corr_method,
+      pmn_corr_method = pmn_corr_method,
       pmn_filter_by = pmn_filter_by,
-      corr_cutoff = pmn_corr_cutoff,
-      pvalue_cutoff = pmn_pvalue_cutoff,
-      q_value_cutoff = pmn_q_value_cutoff,
-      p_adjust_method = pmn_p_adjust_method
+      pmn_corr_cutoff = pmn_corr_cutoff,
+      pmn_pvalue_cutoff = pmn_pvalue_cutoff,
+      pmn_q_value_cutoff = pmn_q_value_cutoff,
+      pmn_p_adjust_method = pmn_p_adjust_method
     )
     curr_pmn <- pmn_files[1]
 
