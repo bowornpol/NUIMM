@@ -2,7 +2,7 @@
 % Please edit documentation in R/internal_pathway_pathway_network.R
 \name{con_ppn_int}
 \alias{con_ppn_int}
-\title{Internal Pathway-Pathway Network Helper}
+\title{Internal Pathway-Pathway Network Helper (Modified for Manual Reference)}
 \usage{
 con_ppn_int(
   gene_abun_file,
@@ -14,7 +14,8 @@ con_ppn_int(
   ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
   ppn_p_adjust_method = "fdr",
   ppn_pvalue_cutoff = 0.05,
-  ppn_jaccard_cutoff = 0.2
+  ppn_jaccard_cutoff = 0.2,
+  comparisons_list = NULL
 )
 }
 \arguments{
@@ -37,6 +38,8 @@ con_ppn_int(
 \item{ppn_pvalue_cutoff}{Numeric p-value cutoff.}
 
 \item{ppn_jaccard_cutoff}{Numeric Jaccard cutoff.}
+
+\item{comparisons_list}{List of character vectors (e.g., list(c("Healthy", "Disease"))). First element is Reference.}
 }
 \value{
 List of GSEA and Jaccard file paths.

@@ -1,4 +1,4 @@
-#' Internal Pathway-Pathway Network Helper
+#' Internal Pathway-Pathway Network Helper (Modified for Manual Reference)
 #'
 #' Runs DA, GSEA, and Jaccard index calculation.
 #'
@@ -12,6 +12,7 @@
 #' @param ppn_p_adjust_method GSEA p-adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".
 #' @param ppn_pvalue_cutoff Numeric p-value cutoff.
 #' @param ppn_jaccard_cutoff Numeric Jaccard cutoff.
+#' @param comparisons_list List of character vectors (e.g., list(c("Healthy", "Disease"))). First element is Reference.
 #' @return List of GSEA and Jaccard file paths.
 #' @keywords internal
 con_ppn_int <- function(
@@ -24,7 +25,8 @@ con_ppn_int <- function(
     ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
     ppn_p_adjust_method = "fdr",
     ppn_pvalue_cutoff = 0.05,
-    ppn_jaccard_cutoff = 0.2
+    ppn_jaccard_cutoff = 0.2,
+    comparisons_list = NULL
 ) {
   ppn_da_method <- match.arg(ppn_da_method)
   ppn_map_database <- match.arg(ppn_map_database)
@@ -44,10 +46,15 @@ con_ppn_int <- function(
   meta <- meta[meta$SampleID %in% common_samples, ]
   rownames(meta) <- meta$SampleID
 
-  # 3. Sort Conditions Alphabetically
-  # This ensures "Healthy" (or Baseline) is always cond1 if named alphabetically.
-  conditions <- sort(unique(meta$class))
-  comparisons <- combn(conditions, 2, simplify = FALSE)
+  # 3. Define Comparisons
+  if (is.null(comparisons_list)) {
+    # Default: Sort alphabetically if user provided nothing
+    conditions <- sort(unique(meta$class))
+    comparisons <- combn(conditions, 2, simplify = FALSE)
+  } else {
+    # Use the manual list provided by the user
+    comparisons <- comparisons_list
+  }
 
   gsea_paths <- c()
   jaccard_paths <- c()
@@ -56,7 +63,9 @@ con_ppn_int <- function(
     cond1 <- comp[1] # Reference Group
     cond2 <- comp[2] # Target Group
     comp_name <- paste0(cond1, "_vs_", cond2)
-    message("Analyzing: ", comp_name, " (Reference: ", cond1, ")")
+    message("Analyzing: ", comp_name)
+    message("   -> Reference Group: ", cond1)
+    message("   -> Target Group:    ", cond2)
 
     sub_meta <- meta[meta$class %in% c(cond1, cond2), ]
     sub_abun <- abun[, sub_meta$SampleID]
