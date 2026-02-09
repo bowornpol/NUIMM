@@ -18,6 +18,7 @@
 #' @param ppn_p_adjust_method GSEA p-adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".
 #' @param ppn_pvalue_cutoff Numeric p-value cutoff for GSEA.
 #' @param ppn_jaccard_cutoff Numeric Jaccard cutoff for PPN edges.
+#' @param comparisons_list List of character vectors (e.g., list(c("Healthy", "Stage_III_IV"))). First element is Reference.
 #' @param mpn_filtering MPN filtering options: "unfiltered", "mean", "median", "top10%", "top25%", "top50%", "top75%".
 #' @param pmn_corr_method Correlation options: "spearman", "pearson", "kendall".
 #' @param pmn_filter_by Filter options: "none", "p_value", "q_value".
@@ -43,6 +44,7 @@ con_mln <- function(
     ppn_p_adjust_method = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none"),
     ppn_pvalue_cutoff = 0.05,
     ppn_jaccard_cutoff = 0.2,
+    comparisons_list = NULL, # <--- Added Parameter
     mpn_filtering = c("unfiltered", "mean", "median", "top10%", "top25%", "top50%", "top75%"),
     pmn_corr_method = c("spearman", "pearson", "kendall"),
     pmn_filter_by = c("none", "p_value", "q_value"),
@@ -109,6 +111,8 @@ con_mln <- function(
   }
 
   ppn_dir <- file.path(output_dir, "ppn_output")
+
+  # --- PPN Layer Calculation ---
   ppn_results <- con_ppn_int(
     gene_abun_file = gene_abun_file,
     metadata_file = metadata_file,
@@ -119,7 +123,8 @@ con_mln <- function(
     ppn_rank_by = ppn_rank_by,
     ppn_p_adjust_method = ppn_p_adjust_method,
     ppn_pvalue_cutoff = ppn_pvalue_cutoff,
-    ppn_jaccard_cutoff = ppn_jaccard_cutoff
+    ppn_jaccard_cutoff = ppn_jaccard_cutoff,
+    comparisons_list = comparisons_list  # <--- Passed to Internal Function
   )
 
   gsea_files <- ppn_results$gsea_paths
@@ -135,6 +140,7 @@ con_mln <- function(
 
     message("\nProcessing integration for: ", basename(curr_gsea))
 
+    # --- MPN Layer Calculation ---
     mpn_dir <- file.path(output_dir, "mpn_output")
     mpn_files <- con_mpn_int(
       path_con_file = processed_contrib_file,
@@ -143,8 +149,11 @@ con_mln <- function(
       output_dir = mpn_dir,
       mpn_filtering = mpn_filtering
     )
+    # Note: mpn_files usually returns one file per class.
+    # Current logic takes the first one. Adjust if specific class matching needed.
     curr_mpn <- mpn_files[1]
 
+    # --- PMN Layer Calculation ---
     pmn_dir <- file.path(output_dir, "pmn_output")
     pmn_files <- con_pmn_int(
       path_abun_file = path_abun_file,
@@ -159,8 +168,9 @@ con_mln <- function(
       pmn_q_value_cutoff = pmn_q_value_cutoff,
       pmn_p_adjust_method = pmn_p_adjust_method
     )
-    curr_pmn <- pmn_files[1]
+    curr_pmn <- if(length(pmn_files) > 0) pmn_files[1] else NULL
 
+    # --- Final Integration (MLN) ---
     mln_dir <- file.path(output_dir, "mln_final")
     final_net <- con_mln_int(
       gsea_file = curr_gsea,

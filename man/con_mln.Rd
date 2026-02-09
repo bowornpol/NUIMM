@@ -22,6 +22,7 @@ con_mln(
     "none"),
   ppn_pvalue_cutoff = 0.05,
   ppn_jaccard_cutoff = 0.2,
+  comparisons_list = NULL,
   mpn_filtering = c("unfiltered", "mean", "median", "top10\%", "top25\%", "top50\%",
     "top75\%"),
   pmn_corr_method = c("spearman", "pearson", "kendall"),
@@ -49,6 +50,7 @@ con_mln(
     "none"),
   ppn_pvalue_cutoff = 0.05,
   ppn_jaccard_cutoff = 0.2,
+  comparisons_list = NULL,
   mpn_filtering = c("unfiltered", "mean", "median", "top10\%", "top25\%", "top50\%",
     "top75\%"),
   pmn_corr_method = c("spearman", "pearson", "kendall"),
@@ -89,6 +91,8 @@ con_mln(
 \item{ppn_pvalue_cutoff}{Numeric p-value cutoff for GSEA.}
 
 \item{ppn_jaccard_cutoff}{Numeric Jaccard cutoff for PPN edges.}
+
+\item{comparisons_list}{List of character vectors (e.g., list(c("Healthy", "Stage_III_IV"))). First element is Reference.}
 
 \item{mpn_filtering}{MPN filtering options: "unfiltered", "mean", "median", "top10%", "top25%", "top50%", "top75%".}
 
