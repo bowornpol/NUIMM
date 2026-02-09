@@ -7,7 +7,7 @@
 con_mpn_int(
   path_con_file,
   metadata_file,
-  taxonomy_file,
+  taxonomy_file = NULL,
   output_dir,
   mpn_filtering = "top10\%"
 )
@@ -17,7 +17,7 @@ con_mpn_int(
 
 \item{metadata_file}{Character path to metadata file.}
 
-\item{taxonomy_file}{Character path to taxonomy file.}
+\item{taxonomy_file}{Character path to taxonomy file (Optional/NULL).}
 
 \item{output_dir}{Character path to output directory.}
 
@@ -28,5 +28,6 @@ Vector of MPN file paths.
 }
 \description{
 Calculates relative contribution of taxa to functions.
+Handles cases where taxonomy is already merged or missing.
 }
 \keyword{internal}
