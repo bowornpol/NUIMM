@@ -18,6 +18,7 @@
 #' @param ppn_p_adjust_method GSEA p-adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".
 #' @param ppn_pvalue_cutoff Numeric p-value cutoff for GSEA.
 #' @param ppn_jaccard_cutoff Numeric Jaccard cutoff for PPN edges.
+#' @param comparisons_list List of character vectors (e.g., list(c("Healthy", "Stage_III_IV"))). First element is Reference.
 #' @param mpn_filtering MPN filtering options: "unfiltered", "mean", "median", "top10%", "top25%", "top50%", "top75%".
 #' @param pmn_corr_method Correlation options: "spearman", "pearson", "kendall".
 #' @param pmn_filter_by Filter options: "none", "p_value", "q_value".
@@ -43,6 +44,7 @@ con_mln <- function(
     ppn_p_adjust_method = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none"),
     ppn_pvalue_cutoff = 0.05,
     ppn_jaccard_cutoff = 0.2,
+    comparisons_list = NULL,
     mpn_filtering = c("unfiltered", "mean", "median", "top10%", "top25%", "top50%", "top75%"),
     pmn_corr_method = c("spearman", "pearson", "kendall"),
     pmn_filter_by = c("none", "p_value", "q_value"),
@@ -61,6 +63,10 @@ con_mln <- function(
 
   processed_contrib_file <- file.path(output_dir, "processed_contribution.csv")
 
+  # Initialize variable to control if taxonomy file is passed to MPN step
+  # Default is NULL (do not pass), only change for PICRUSt if needed
+  taxonomy_file_to_pass <- NULL
+
   if (format == "universal") {
     df <- read.csv(path_con_file, stringsAsFactors = FALSE)
     required <- c("SampleID", "PathwayID", "TaxonID", "contribution")
@@ -71,11 +77,7 @@ con_mln <- function(
     colnames(df)[colnames(df) == "TaxonID"] <- "FeatureID"
     df$TaxonID <- df$FeatureID
     write.csv(df, processed_contrib_file, row.names = FALSE)
-
-    processed_taxonomy_file <- file.path(output_dir, "processed_taxonomy.csv")
-    dummy_tax <- data.frame(FeatureID = unique(df$FeatureID), TaxonID = unique(df$FeatureID))
-    write.csv(dummy_tax, processed_taxonomy_file, row.names = FALSE)
-    taxonomy_file <- processed_taxonomy_file
+    # Universal format already has taxonomy info in the file, so we pass NULL
 
   } else if (format == "picrust") {
     if (is.null(taxonomy_file)) stop("Taxonomy file is required for PICRUSt format.")
@@ -86,6 +88,7 @@ con_mln <- function(
     final_df <- merged[, c("SampleID", "PathwayID", "FeatureID", "TaxonID", "taxon_function_abun")]
     colnames(final_df)[colnames(final_df) == "PathwayID"] <- "FunctionID"
     write.csv(final_df, processed_contrib_file, row.names = FALSE)
+    # PICRUSt data is now merged, so we pass NULL to avoid double merging
 
   } else if (format == "humann") {
     df <- read.csv(path_con_file, stringsAsFactors = FALSE, check.names = FALSE)
@@ -101,14 +104,12 @@ con_mln <- function(
 
     final_df <- long_df[, c("SampleID", "FunctionID", "FeatureID", "TaxonID", "taxon_function_abun")]
     write.csv(final_df, processed_contrib_file, row.names = FALSE)
-
-    processed_taxonomy_file <- file.path(output_dir, "processed_taxonomy.csv")
-    dummy_tax <- data.frame(FeatureID = unique(final_df$FeatureID), TaxonID = unique(final_df$FeatureID))
-    write.csv(dummy_tax, processed_taxonomy_file, row.names = FALSE)
-    taxonomy_file <- processed_taxonomy_file
+    # HUMAnN data has taxonomy embedded, so we pass NULL
   }
 
   ppn_dir <- file.path(output_dir, "ppn_output")
+
+  # --- PPN Layer Calculation ---
   ppn_results <- con_ppn_int(
     gene_abun_file = gene_abun_file,
     metadata_file = metadata_file,
@@ -119,13 +120,14 @@ con_mln <- function(
     ppn_rank_by = ppn_rank_by,
     ppn_p_adjust_method = ppn_p_adjust_method,
     ppn_pvalue_cutoff = ppn_pvalue_cutoff,
-    ppn_jaccard_cutoff = ppn_jaccard_cutoff
+    ppn_jaccard_cutoff = ppn_jaccard_cutoff,
+    comparisons_list = comparisons_list
   )
 
   gsea_files <- ppn_results$gsea_paths
   jaccard_files <- ppn_results$jaccard_paths
 
-  if (length(gsea_files) == 0) stop("No significant GSEA results found.")
+  if (length(gsea_files) == 0) stop("No significant GSEA results found. Try relaxing ppn_pvalue_cutoff.")
 
   final_networks <- c()
 
@@ -135,16 +137,26 @@ con_mln <- function(
 
     message("\nProcessing integration for: ", basename(curr_gsea))
 
+    # --- MPN Layer Calculation ---
     mpn_dir <- file.path(output_dir, "mpn_output")
     mpn_files <- con_mpn_int(
       path_con_file = processed_contrib_file,
       metadata_file = metadata_file,
-      taxonomy_file = taxonomy_file,
+      taxonomy_file = taxonomy_file_to_pass, # Always NULL for Humann/Universal
       output_dir = mpn_dir,
       mpn_filtering = mpn_filtering
     )
+
+    # SAFETY CHECK: If MPN generation failed (e.g., no stratified data), skip or warn
+    if (length(mpn_files) == 0) {
+      warning("MPN layer could not be generated (no matching data). Skipping network integration for this comparison.")
+      next
+    }
+
+    # Select the first MPN file (or adapt logic to match classes if needed)
     curr_mpn <- mpn_files[1]
 
+    # --- PMN Layer Calculation ---
     pmn_dir <- file.path(output_dir, "pmn_output")
     pmn_files <- con_pmn_int(
       path_abun_file = path_abun_file,
@@ -159,7 +171,16 @@ con_mln <- function(
       pmn_q_value_cutoff = pmn_q_value_cutoff,
       pmn_p_adjust_method = pmn_p_adjust_method
     )
-    curr_pmn <- pmn_files[1]
+
+    # Handle case where no correlations found
+    curr_pmn <- if(length(pmn_files) > 0) pmn_files[1] else NULL
+
+    # --- Final Integration (MLN) ---
+    # Double check that curr_mpn is valid before reading
+    if (is.na(curr_mpn) || !file.exists(curr_mpn)) {
+      warning("MPN file invalid. Skipping.")
+      next
+    }
 
     mln_dir <- file.path(output_dir, "mln_final")
     final_net <- con_mln_int(
