@@ -1,4 +1,4 @@
-#' Internal Pathway-Pathway Network Helper
+#' Internal Pathway-Pathway Network Helper (Adjusted for MaAsLin2)
 #'
 #' Runs DA, GSEA, and Jaccard index calculation.
 #'
@@ -73,9 +73,23 @@ con_ppn_int <- function(
       res_df$pvalue <- res_df$PValue
       res_df$gene <- rownames(res_df)
     } else if (ppn_da_method == "maaslin2") {
-      fit_data <- Maaslin2::Maaslin2(input_data = sub_abun, input_metadata = sub_meta, output = file.path(output_dir, "maaslin_temp"), fixed_effects = "class", reference = c("class", cond2))
+
+      # --- MODIFICATION START ---
+      # Create a dynamic folder name based on the comparison so results aren't overwritten
+      maaslin_out_folder <- file.path(output_dir, paste0("maaslin_results_", comp_name))
+
+      fit_data <- Maaslin2::Maaslin2(
+        input_data      = sub_abun,
+        input_metadata  = sub_meta,
+        output          = maaslin_out_folder,  # <--- CHANGED HERE
+        fixed_effects   = "class",
+        reference       = c("class", cond2)
+      )
+
       res_df <- fit_data$results
       res_df <- dplyr::rename(res_df, log2FoldChange = coef, pvalue = pval, gene = feature)
+      # --- MODIFICATION END ---
+
     } else if (ppn_da_method == "simple") {
       grp1_vals <- sub_abun[, sub_meta$class == cond1]
       grp2_vals <- sub_abun[, sub_meta$class == cond2]
