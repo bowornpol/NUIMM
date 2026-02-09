@@ -2,7 +2,7 @@
 % Please edit documentation in R/internal_pathway_pathway_network.R
 \name{con_ppn_int}
 \alias{con_ppn_int}
-\title{Internal Pathway-Pathway Network Helper}
+\title{Internal Pathway-Pathway Network Helper (Adjusted for MaAsLin2)}
 \usage{
 con_ppn_int(
   gene_abun_file,
