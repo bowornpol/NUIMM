@@ -1,4 +1,4 @@
-#' Internal Pathway-Pathway Network Helper (Adjusted for MaAsLin2)
+#' Internal Pathway-Pathway Network Helper (Modified for Manual Reference)
 #'
 #' Runs DA, GSEA, and Jaccard index calculation.
 #'
@@ -12,6 +12,7 @@
 #' @param ppn_p_adjust_method GSEA p-adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".
 #' @param ppn_pvalue_cutoff Numeric p-value cutoff.
 #' @param ppn_jaccard_cutoff Numeric Jaccard cutoff.
+#' @param comparisons_list List of character vectors (e.g., list(c("Healthy", "Disease"))). First element is Reference.
 #' @return List of GSEA and Jaccard file paths.
 #' @keywords internal
 con_ppn_int <- function(
@@ -24,7 +25,8 @@ con_ppn_int <- function(
     ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
     ppn_p_adjust_method = "fdr",
     ppn_pvalue_cutoff = 0.05,
-    ppn_jaccard_cutoff = 0.2
+    ppn_jaccard_cutoff = 0.2,
+    comparisons_list = NULL
 ) {
   ppn_da_method <- match.arg(ppn_da_method)
   ppn_map_database <- match.arg(ppn_map_database)
@@ -32,30 +34,44 @@ con_ppn_int <- function(
 
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
+  # 1. Load Data
   abun <- read.csv(gene_abun_file, row.names = 1, check.names = FALSE)
   meta <- read.csv(metadata_file, stringsAsFactors = FALSE)
 
+  # 2. Match Samples
   common_samples <- intersect(colnames(abun), meta$SampleID)
+  if(length(common_samples) == 0) stop("No matching samples found! Check SampleIDs.")
+
   abun <- abun[, common_samples]
   meta <- meta[meta$SampleID %in% common_samples, ]
   rownames(meta) <- meta$SampleID
 
-  conditions <- unique(meta$class)
-  comparisons <- combn(conditions, 2, simplify = FALSE)
+  # 3. Define Comparisons
+  if (is.null(comparisons_list)) {
+    # Default: Sort alphabetically if user provided nothing
+    conditions <- sort(unique(meta$class))
+    comparisons <- combn(conditions, 2, simplify = FALSE)
+  } else {
+    # Use the manual list provided by the user
+    comparisons <- comparisons_list
+  }
 
   gsea_paths <- c()
   jaccard_paths <- c()
 
   for (comp in comparisons) {
-    cond1 <- comp[1]
-    cond2 <- comp[2]
+    cond1 <- comp[1] # Reference Group
+    cond2 <- comp[2] # Target Group
     comp_name <- paste0(cond1, "_vs_", cond2)
     message("Analyzing: ", comp_name)
+    message("   -> Reference Group: ", cond1)
+    message("   -> Target Group:    ", cond2)
 
     sub_meta <- meta[meta$class %in% c(cond1, cond2), ]
     sub_abun <- abun[, sub_meta$SampleID]
     res_df <- NULL
 
+    # --- Differential Abundance ---
     if (ppn_da_method == "deseq2") {
       sub_abun_int <- round(sub_abun)
       dds <- DESeq2::DESeqDataSetFromMatrix(countData = sub_abun_int, colData = sub_meta, design = ~ class)
@@ -63,6 +79,7 @@ con_ppn_int <- function(
       res <- DESeq2::results(dds, contrast = c("class", cond1, cond2))
       res_df <- as.data.frame(res)
       res_df$gene <- rownames(res_df)
+
     } else if (ppn_da_method == "edger") {
       y <- edgeR::DGEList(counts = sub_abun, group = sub_meta$class)
       y <- edgeR::calcNormFactors(y)
@@ -72,38 +89,36 @@ con_ppn_int <- function(
       res_df$log2FoldChange <- res_df$logFC
       res_df$pvalue <- res_df$PValue
       res_df$gene <- rownames(res_df)
-    } else if (ppn_da_method == "maaslin2") {
 
-      # --- MODIFICATION START ---
-      # Create a dynamic folder name based on the comparison so results aren't overwritten
-      maaslin_out_folder <- file.path(output_dir, paste0("maaslin_results_", comp_name))
+    } else if (ppn_da_method == "maaslin2") {
+      # FIXED: Dynamic folder name to prevent overwriting
+      maaslin_out <- file.path(output_dir, paste0("maaslin_results_", comp_name))
 
       fit_data <- Maaslin2::Maaslin2(
         input_data      = sub_abun,
         input_metadata  = sub_meta,
-        output          = maaslin_out_folder,  # <--- CHANGED HERE
+        output          = maaslin_out,
         fixed_effects   = "class",
-        reference       = c("class", cond2)
+        reference       = c("class", cond1) # FIXED: Uses cond1 as Reference
       )
-
       res_df <- fit_data$results
       res_df <- dplyr::rename(res_df, log2FoldChange = coef, pvalue = pval, gene = feature)
-      # --- MODIFICATION END ---
 
     } else if (ppn_da_method == "simple") {
       grp1_vals <- sub_abun[, sub_meta$class == cond1]
       grp2_vals <- sub_abun[, sub_meta$class == cond2]
       pvals <- apply(sub_abun, 1, function(x) {
-        g1 <- x[sub_meta$class == cond1]
-        g2 <- x[sub_meta$class == cond2]
+        g1 <- x[sub_meta$class == cond1]; g2 <- x[sub_meta$class == cond2]
         wt <- tryCatch(wilcox.test(g1, g2), error = function(e) NA)
         if(is.list(wt)) wt$p.value else NA
       })
-      fc <- (rowMeans(grp1_vals) + 1e-6) / (rowMeans(grp2_vals) + 1e-6)
+      # Calculate Fold Change: Target (cond2) / Reference (cond1)
+      fc <- (rowMeans(grp2_vals) + 1e-6) / (rowMeans(grp1_vals) + 1e-6)
       log2fc <- log2(fc)
       res_df <- data.frame(gene = rownames(sub_abun), log2FoldChange = log2fc, pvalue = pvals)
     }
 
+    # --- GSEA Analysis ---
     map_raw <- read.csv(map_file, header = FALSE, stringsAsFactors = FALSE)
     TERM2GENE <- data.frame(term = map_raw[,1], gene = map_raw[,2])
     res_df <- res_df[!is.na(res_df$pvalue) & !is.na(res_df$log2FoldChange), ]
@@ -130,6 +145,7 @@ con_ppn_int <- function(
       write.csv(gsea_out, fpath, row.names = FALSE)
       gsea_paths <- c(gsea_paths, fpath)
 
+      # --- Jaccard Index ---
       sig_paths <- gsea_out$ID
       genes_list <- strsplit(gsea_out$core_enrichment, "/")
       names(genes_list) <- sig_paths
