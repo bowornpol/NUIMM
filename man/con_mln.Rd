@@ -21,6 +21,7 @@ con_mln(
     "none"),
   ppn_pvalue_cutoff = 0.05,
   ppn_jaccard_cutoff = 0.2,
+  ppn_jaccard_method = c("gsea_core", "map_file"),
   comparisons_list = NULL,
   mpn_filtering = c("unfiltered", "mean", "median", "top10\%", "top25\%", "top50\%",
     "top75\%"),
@@ -45,7 +46,7 @@ con_mln(
 
 \item{taxonomy_file}{Character path to taxonomy file (Required for 'picrust').}
 
-\item{map_file}{Character path to pathway-to-gene mapping file.}
+\item{map_file}{Character path to pathway-to-gene mapping file. Required if ppn_map_database is 'custom'.}
 
 \item{output_dir}{Character path to output directory.}
 
@@ -62,6 +63,8 @@ con_mln(
 \item{ppn_pvalue_cutoff}{Numeric p-value cutoff for GSEA.}
 
 \item{ppn_jaccard_cutoff}{Numeric Jaccard cutoff for PPN edges.}
+
+\item{ppn_jaccard_method}{Method for Jaccard index: "gsea_core", "map_file".}
 
 \item{comparisons_list}{List of character vectors (e.g., list(c("Healthy", "Stage_III_IV"))). First element is Reference.}
 
@@ -83,6 +86,9 @@ con_mln(
 Vector of final network file paths.
 }
 \description{
-Standardizes input (Universal, HUMAnN, PICRUSt), builds PPN, MPN, and PMN layers,
-and integrates them into a final visualized network.
+Multi-layered Network Construction (End-to-End)
+}
+\details{
+Orchestrates the construction of a multi-layered network by standardizing inputs,
+executing the layer-building functions (PPN, MPN, PMN), and triggering integration.
 }

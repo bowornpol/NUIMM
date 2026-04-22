@@ -50,6 +50,8 @@
 #' @references
 #' Carlin DE, Demchak B, Pratt D, Sage E, Ideker T. Network propagation in the cytoscape cyberinfrastructure. PLoS computational biology. 2017;13(10):e1005598.
 #' @export
+utils::globalVariables(c("edge_type", "Feature2", "Feature1", "from", "to", "Node_A", "Node_B", "edge_score", "Heat_score", "Time", "Correlation"))
+
 node_prior <- function(
   multi_layered_network_file,
   output_directory,
@@ -113,21 +115,21 @@ node_prior <- function(
   }
   message("Identified ", length(all_metabolite_nodes), " unique metabolite nodes for seeding and potential filtering.")
 
-  # Define the function for heat vector at time t
-  H_vector_func <- function(t_val, laplacian_matrix, initial_heat_vector) {
-    # Ensure dimensions match before multiplication
-    if (nrow(laplacian_matrix) != length(initial_heat_vector)) {
-      stop("Dimension mismatch: Laplacian matrix rows (", nrow(laplacian_matrix), ") and initial heat vector length (", length(initial_heat_vector), ") do not match.")
-    }
-    expm::expm(-laplacian_matrix * t_val) %*% initial_heat_vector
+  # Define the function for heat vector at time t using Eigendecomposition
+  # This is orders of magnitude faster than calling expm::expm() in a loop
+  H_vector_func_fast <- function(t_val, U, lambda, U_T_H0) {
+    # exp(-Lambda * t) is just the element-wise exponential of the eigenvalues
+    exp_neg_lambda_t <- exp(-lambda * t_val)
+    # H(t) = U * (exp(-Lambda * t) * (U^T * H0))
+    as.vector(U %*% (exp_neg_lambda_t * U_T_H0))
   }
 
   # Function to find stabilization time and return correlations
-  find_stabilization_data <- function(current_L, current_H0, time_interval, threshold, window_size) {
+  find_stabilization_data <- function(U, lambda, U_T_H0, time_interval, threshold, window_size) {
     time_steps_local <- seq(0, 1, by = time_interval)
 
     heat_vectors_over_time <- sapply(time_steps_local, function(t) {
-      H_vector_func(t, current_L, current_H0)
+      H_vector_func_fast(t, U, lambda, U_T_H0)
     })
 
     if (ncol(heat_vectors_over_time) < 2) {
@@ -154,13 +156,13 @@ node_prior <- function(
       for (i in seq(length(correlations) - window_size + 1)) {
         diffs <- abs(diff(correlations[i:(i + window_size - 1)]))
         if (all(diffs < threshold)) {
-          stabilization_t_found <- time_steps_local[i+1] # Time at the start of the stabilization *window* of the second vector in the pair.
+          stabilization_t_found <- time_steps_local[i + 1] # Time at the start of the stabilization *window* of the second vector in the pair.
           break
         }
       }
     }
 
-    return(list(stabilization_time = stabilization_t_found, correlations_df = correlation_df))
+    list(stabilization_time = stabilization_t_found, correlations_df = correlation_df)
   }
 
   # 3. Loop through each metabolite node to perform heat diffusion
@@ -187,7 +189,6 @@ node_prior <- function(
         warning("  Seed metabolite '", seed_metabolite_id, "' is not present in the graph after filtering. This implies it was only connected to other metabolites, which were removed. Skipping diffusion for this seed.")
         next
       }
-
     } else {
       # Use the full network data (original behavior)
       current_combined_data <- combined_data_full
@@ -210,8 +211,10 @@ node_prior <- function(
     # Get all unique nodes from the current filtered data to ensure the graph includes them
     all_nodes_in_current_data <- unique(c(current_combined_data$Feature1, current_combined_data$Feature2))
 
-    g_current <- igraph::graph_from_data_frame(d = current_combined_data[, c("Feature1", "Feature2")], directed = FALSE,
-                                               vertices = all_nodes_in_current_data) # Explicitly define vertices
+    g_current <- igraph::graph_from_data_frame(
+      d = current_combined_data[, c("Feature1", "Feature2")], directed = FALSE,
+      vertices = all_nodes_in_current_data
+    ) # Explicitly define vertices
 
     # Assign weights (handling potential mismatches as before)
     graph_edges_for_weighting <- dplyr::ungroup(
@@ -256,6 +259,12 @@ node_prior <- function(
     L_current <- igraph::laplacian_matrix(g_current, weights = igraph::E(g_current)$weight)
     L_current <- as.matrix(L_current)
 
+    # Mathematical Optimization: Eigendecomposition of the symmetric Laplacian matrix
+    # This allows us to compute exp(-L*t) extremely fast for any t without using expm
+    eig <- eigen(L_current, symmetric = TRUE)
+    U <- eig$vectors
+    lambda <- eig$values
+
     # Initialize the heat vector H_0 for the current seed within the CURRENT graph's nodes
     H_0_current_graph <- numeric(igraph::vcount(g_current))
     names(H_0_current_graph) <- igraph::V(g_current)$name
@@ -267,15 +276,18 @@ node_prior <- function(
     }
     H_0_current_graph[seed_index_current_graph] <- 1.0
 
+    # Pre-compute U^T * H0 since it is constant across all time steps for this seed
+    U_T_H0 <- t(U) %*% H_0_current_graph
+
     # Find stabilization time and get correlations data
-    stabilization_data_result <- find_stabilization_data(L_current, H_0_current_graph, time_step_interval, stabilization_threshold, stabilization_window_size)
+    stabilization_data_result <- find_stabilization_data(U, lambda, U_T_H0, time_step_interval, stabilization_threshold, stabilization_window_size)
     stabilization_t <- stabilization_data_result$stabilization_time
     correlation_df <- stabilization_data_result$correlations_df
 
     message("    Stabilization time for '", seed_metabolite_id, "': t = ", round(stabilization_t, 4))
 
     # Calculate final heat scores at stabilization time
-    final_heat_scores <- H_vector_func(stabilization_t, L_current, H_0_current_graph)
+    final_heat_scores <- H_vector_func_fast(stabilization_t, U, lambda, U_T_H0)
 
     # Create output data frame for this metabolite
     output_df <- dplyr::arrange(
@@ -304,23 +316,30 @@ node_prior <- function(
 
     # Generate and save correlation plot
     correlation_plot <- ggplot2::ggplot(correlation_df, ggplot2::aes(x = Time, y = Correlation)) +
-      ggplot2::geom_line() +
-      ggplot2::geom_vline(xintercept = stabilization_t, linetype = "dashed", color = "#a62140") +
+      ggplot2::geom_line(size = 1.2, color = "#3C5488") +
+      ggplot2::geom_point(size = 2.5, color = "#3C5488") +
+      ggplot2::geom_vline(xintercept = stabilization_t, linetype = "dashed", color = "#E64B35", size = 1) +
       ggplot2::geom_text(
         ggplot2::aes(
           x = stabilization_t,
-          y = max(Correlation, na.rm = TRUE) * 0.5, # Position text dynamically
-          label = paste("t =", round(stabilization_t, 4))
+          y = max(Correlation, na.rm = TRUE) * 0.95,
+          label = paste("Stabilization t =", round(stabilization_t, 4))
         ),
-        color = "#a62140", hjust = -0.1, vjust = 0.5, size = 5, fontface = "bold"
+        color = "#E64B35", hjust = -0.1, vjust = 1.0, size = 5, fontface = "italic", family = "sans"
       ) +
-      ggplot2::xlab("Time step") +
-      ggplot2::ylab("Spearman correlation with previous time step") +
+      ggplot2::labs(
+        x = "Time Step",
+        y = "Spearman Correlation (Current vs. Previous)"
+      ) +
       ggplot2::scale_x_continuous(breaks = seq(0, 1, by = 0.1)) +
-      ggplot2::theme_minimal() +
+      ggplot2::theme_classic(base_family = "sans", base_size = 12) +
       ggplot2::theme(
-        plot.title = ggplot2::element_text(face = "bold", hjust = 0.5),
-        panel.border = ggplot2::element_rect(color = "black", fill = NA, size = 1)
+        axis.title = ggplot2::element_text(face = "bold", size = 12, color = "black"),
+        axis.text = ggplot2::element_text(size = 10, color = "black"),
+        axis.line = ggplot2::element_line(size = 0.8, color = "black"),
+        axis.ticks = ggplot2::element_line(color = "black", size = 0.8),
+        plot.title = ggplot2::element_blank(),
+        plot.margin = ggplot2::margin(1, 1, 1, 1, "cm")
       )
 
     output_file_name_plot <- paste0("correlation_plot_", cleaned_seed_id, "_", cleaned_input_file_name, ".jpg")
@@ -330,5 +349,5 @@ node_prior <- function(
   }
 
   message("Node prioritization complete.")
-  return(invisible(NULL))
+  invisible(NULL)
 }

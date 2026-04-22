@@ -1,6 +1,8 @@
 #' Internal Pathway-Metabolite Network Helper
 #'
-#' Correlates pathway abundance and metabolites.
+#' @details
+#' Connects Pathways to Metabolites by calculating pairwise correlations between 
+#' GSEA-significant pathways and metabolites, filtering results by significance.
 #'
 #' @param path_abun_file Character path to pathway abundance file.
 #' @param met_con_file Character path to metabolite concentration file.
@@ -16,25 +18,25 @@
 #' @return Vector of PMN file paths.
 #' @keywords internal
 con_pmn_int <- function(
-    path_abun_file,
-    met_con_file,
-    gsea_file,
-    metadata_file,
-    output_dir,
-    pmn_corr_method = c("spearman", "pearson", "kendall"),
-    pmn_filter_by = "p_value",
-    pmn_corr_cutoff = 0.3,
-    pmn_pvalue_cutoff = 0.05,
-    pmn_q_value_cutoff = 0.05,
-    pmn_p_adjust_method = "fdr"
+  path_abun_file,
+  met_con_file,
+  gsea_file,
+  metadata_file,
+  output_dir,
+  pmn_corr_method = c("spearman", "pearson", "kendall"),
+  pmn_filter_by = "p_value",
+  pmn_corr_cutoff = 0.3,
+  pmn_pvalue_cutoff = 0.05,
+  pmn_q_value_cutoff = 0.05,
+  pmn_p_adjust_method = "fdr"
 ) {
   pmn_corr_method <- match.arg(pmn_corr_method)
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-  path_abun <- read.csv(path_abun_file, row.names = 1, check.names = FALSE)
-  met_con <- read.csv(met_con_file, row.names = 1, check.names = FALSE)
-  meta <- read.csv(metadata_file)
-  gsea <- read.csv(gsea_file)
+  path_abun <- read_input_file(path_abun_file, file_type = "csv", row.names = 1, check.names = FALSE)
+  met_con <- read_input_file(met_con_file, file_type = "csv", row.names = 1, check.names = FALSE)
+  meta <- read_input_file(metadata_file, file_type = "csv")
+  gsea <- read_input_file(gsea_file, file_type = "csv")
 
   sig_paths <- gsea$ID
   path_abun <- path_abun[rownames(path_abun) %in% sig_paths, ]
@@ -50,14 +52,23 @@ con_pmn_int <- function(
     for (met in colnames(met_con)) {
       x <- as.numeric(path_abun[, path])
       y <- as.numeric(met_con[, met])
-      test <- tryCatch(cor.test(x, y, method = pmn_corr_method), error = function(e) NULL)
+
+      # Handle potential errors gracefully with a friendly warning but don't fail the whole loop
+      test <- tryCatch(
+        cor.test(x, y, method = pmn_corr_method),
+        error = function(e) {
+          warning(sprintf("Correlation failed for Pathway %s and Metabolite %s: %s", path, met, e$message))
+          NULL
+        }
+      )
+
       if (!is.null(test)) {
         results <- rbind(results, data.frame(FunctionID = path, MetaboliteID = met, correlation = test$estimate, p_value = test$p.value))
       }
     }
   }
 
-  if(nrow(results) > 0) {
+  if (nrow(results) > 0) {
     results$q_value <- p.adjust(results$p_value, method = pmn_p_adjust_method)
     results <- results[abs(results$correlation) >= pmn_corr_cutoff, ]
 
@@ -68,8 +79,8 @@ con_pmn_int <- function(
     }
     fname <- file.path(output_dir, "pmn_results.csv")
     write.csv(results, fname, row.names = FALSE)
-    return(c(fname))
+    c(fname)
   } else {
-    return(c())
+    c()
   }
 }

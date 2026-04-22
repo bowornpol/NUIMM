@@ -11,6 +11,8 @@
 #' @param top_n_hubs Integer. Number of top hubs to filter and visualize.
 #' @param visualize Logical. If TRUE, saves PDF and PNG plots of the top hubs. Defaults to FALSE.
 #' @export
+utils::globalVariables(c("MCC_score", "mcc_score", "name"))
+
 iden_hub <- function(
   multi_layered_network_file,
   output_directory,
@@ -36,11 +38,7 @@ iden_hub <- function(
   if (!file.exists(multi_layered_network_file)) stop("File not found.")
 
   # Standardized reading
-  if (file_type == "csv") {
-    network_data <- read.csv(multi_layered_network_file, stringsAsFactors = FALSE)
-  } else {
-    network_data <- read.delim(multi_layered_network_file, stringsAsFactors = FALSE)
-  }
+  network_data <- read_input_file(multi_layered_network_file, file_type = file_type, stringsAsFactors = FALSE)
 
   required_cols <- c("Feature1", "Feature2")
   if (!all(required_cols %in% colnames(network_data))) {
@@ -126,38 +124,42 @@ iden_hub <- function(
     igraph::V(sub_g)$mcc_score <- matched_scores
 
     # 2. Construct the Plot using ggraph
-    p <- ggraph::ggraph(sub_g, layout = 'linear', circular = TRUE) +
-      ggraph::geom_edge_arc(alpha = 0.4, color = "gray70", strength = 0.1) +
-      ggraph::geom_node_point(ggplot2::aes(color = mcc_score), size = 12) +
-      ggraph::geom_node_text(ggplot2::aes(label = name), repel = FALSE, vjust = 3.5, hjust = 0.5, size = 4, fontface = "bold") +
-      ggplot2::scale_color_viridis_c(option = "plasma", name = "MCC Score", direction = -1) +
+    p <- ggraph::ggraph(sub_g, layout = "linear", circular = TRUE) +
+      ggraph::geom_edge_arc(alpha = 0.3, color = "gray60", strength = 0.2) +
+      ggraph::geom_node_point(ggplot2::aes(color = mcc_score, size = mcc_score), show.legend = c(size = FALSE)) +
+      ggplot2::scale_size_continuous(range = c(6, 14)) +
+      ggraph::geom_node_text(ggplot2::aes(label = name), repel = FALSE, vjust = 3.5, hjust = 0.5, size = 4, fontface = "bold", color = "black", family = "sans") +
+      ggplot2::scale_color_gradientn(colors = c("#3C5488", "#4DBBD5", "#00A087", "#F39B7F", "#E64B35"), name = "MCC Score") +
 
       ggplot2::guides(
         color = ggplot2::guide_colorbar(
           title.position = "top",
           title.hjust = 0.5,
-          barwidth = 1.5,       # Thinner width for vertical bar
-          barheight = 15,       # Taller height for vertical bar
-          direction = "vertical", # Changed to vertical
+          barwidth = 1.0,
+          barheight = 12,
+          direction = "vertical",
           frame.colour = "black",
           ticks.colour = "black"
         )
       ) +
 
-      ggplot2::theme_void() +
+      ggplot2::theme_void(base_family = "sans") +
       ggplot2::theme(
         legend.position = "right",
         legend.direction = "vertical",
-        legend.title = ggplot2::element_text(face = "bold", size = 11, hjust = 0.5), # Center title
-        legend.margin = ggplot2::margin(0, 0, 0, 15), # Add padding on the left of legend
-        plot.title = ggplot2::element_text(hjust = 0.5, face = "bold", size = 16),
+        legend.title = ggplot2::element_text(face = "bold", size = 12, hjust = 0.5, color = "black"),
+        legend.text = ggplot2::element_text(size = 10, color = "black"),
+        legend.margin = ggplot2::margin(0, 0, 0, 10),
+        plot.title = ggplot2::element_blank(),
         plot.margin = ggplot2::unit(c(1, 1, 1, 1), "cm")
       ) +
       ggplot2::coord_fixed(clip = "off")
 
     # 3. Save Files (PDF and PNG)
-    base_plot_name <- paste0("hub_plot_", cleaned_input_file_name,
-                             if(!is.null(top_n_hubs)) paste0("_top", top_n_hubs) else "")
+    base_plot_name <- paste0(
+      "hub_plot_", cleaned_input_file_name,
+      if (!is.null(top_n_hubs)) paste0("_top", top_n_hubs) else ""
+    )
 
     pdf_path <- file.path(output_directory, paste0(base_plot_name, ".pdf"))
     png_path <- file.path(output_directory, paste0(base_plot_name, ".png"))
@@ -173,13 +175,14 @@ iden_hub <- function(
   # --------------------------------
 
   # 8. Save CSV Results
-  output_filename <- paste0("hub_mcc_", cleaned_input_file_name,
-                            if(!is.null(top_n_hubs)) paste0("_top", top_n_hubs) else "", ".csv")
+  output_filename <- paste0(
+    "hub_mcc_", cleaned_input_file_name,
+    if (!is.null(top_n_hubs)) paste0("_top", top_n_hubs) else "", ".csv"
+  )
   output_filepath <- file.path(output_directory, output_filename)
   message("\n6. Saving CSV results to: ", output_filepath)
   write.csv(hub_results_df, output_filepath, row.names = FALSE)
 
   message("Hub identification complete.")
-  return(invisible(NULL))
+  invisible(NULL)
 }
-

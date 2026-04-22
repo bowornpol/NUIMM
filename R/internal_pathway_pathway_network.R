@@ -1,6 +1,8 @@
-#' Internal Pathway-Pathway Network Helper (Modified for Manual Reference)
+#' Internal Pathway-Pathway Network Helper
 #'
-#' Runs DA, GSEA, and Jaccard index calculation.
+#' @details
+#' Connects Pathways to Pathways by running Differential Abundance (DA) and Gene Set 
+#' Enrichment Analysis (GSEA). It connects significant pathways using the Jaccard index.
 #'
 #' @param gene_abun_file Character path to gene abundance file.
 #' @param metadata_file Character path to metadata file.
@@ -12,21 +14,25 @@
 #' @param ppn_p_adjust_method GSEA p-adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".
 #' @param ppn_pvalue_cutoff Numeric p-value cutoff.
 #' @param ppn_jaccard_cutoff Numeric Jaccard cutoff.
+#' @param ppn_jaccard_method Method for Jaccard index: "gsea_core", "map_file".
 #' @param comparisons_list List of character vectors (e.g., list(c("Healthy", "Disease"))). First element is Reference.
 #' @return List of GSEA and Jaccard file paths.
 #' @keywords internal
+utils::globalVariables(c("coef", "pval", "feature", "ID", "core_enrichment", "gene", "term"))
+
 con_ppn_int <- function(
-    gene_abun_file,
-    metadata_file,
-    map_file,
-    output_dir,
-    ppn_da_method = c("deseq2", "edger", "maaslin2", "simple"),
-    ppn_map_database = c("kegg", "metacyc", "custom"),
-    ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
-    ppn_p_adjust_method = "fdr",
-    ppn_pvalue_cutoff = 0.05,
-    ppn_jaccard_cutoff = 0.2,
-    comparisons_list = NULL
+  gene_abun_file,
+  metadata_file,
+  map_file,
+  output_dir,
+  ppn_da_method = c("deseq2", "edger", "maaslin2", "simple"),
+  ppn_map_database = c("kegg", "metacyc", "custom"),
+  ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
+  ppn_p_adjust_method = "fdr",
+  ppn_pvalue_cutoff = 0.05,
+  ppn_jaccard_cutoff = 0.2,
+  ppn_jaccard_method = c("gsea_core", "map_file"),
+  comparisons_list = NULL
 ) {
   ppn_da_method <- match.arg(ppn_da_method)
   ppn_map_database <- match.arg(ppn_map_database)
@@ -35,12 +41,12 @@ con_ppn_int <- function(
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
   # 1. Load Data
-  abun <- read.csv(gene_abun_file, row.names = 1, check.names = FALSE)
-  meta <- read.csv(metadata_file, stringsAsFactors = FALSE)
+  abun <- read_input_file(gene_abun_file, file_type = "csv", row.names = 1, check.names = FALSE)
+  meta <- read_input_file(metadata_file, file_type = "csv", stringsAsFactors = FALSE)
 
   # 2. Match Samples
   common_samples <- intersect(colnames(abun), meta$SampleID)
-  if(length(common_samples) == 0) stop("No matching samples found! Check SampleIDs.")
+  if (length(common_samples) == 0) stop("No matching samples found! Check SampleIDs.")
 
   abun <- abun[, common_samples]
   meta <- meta[meta$SampleID %in% common_samples, ]
@@ -54,6 +60,28 @@ con_ppn_int <- function(
   } else {
     # Use the manual list provided by the user
     comparisons <- comparisons_list
+  }
+
+  # 4. Database Mapping (Optimized: Loaded once outside the loop)
+  map_path <- NULL
+  if (ppn_map_database == "kegg") {
+    map_path <- system.file("extdata", "kegg_mapping.csv", package = "NUIMM")
+    if (map_path == "") stop("KEGG mapping file not found in package. Ensure package 'NUIMM' is installed properly.")
+  } else if (ppn_map_database == "metacyc") {
+    map_path <- system.file("extdata", "metacyc_mapping.csv", package = "NUIMM")
+    if (map_path == "") stop("MetaCyc mapping file not found in package.")
+  } else if (ppn_map_database == "custom") {
+    if (is.null(map_file) || !file.exists(map_file)) stop("Custom map_file is required but not provided or doesn't exist.")
+    map_path <- map_file
+  }
+
+  map_raw <- read_input_file(map_path, file_type = "csv", header = FALSE, stringsAsFactors = FALSE)
+  TERM2GENE <- data.frame(term = map_raw[, 1], gene = map_raw[, 2])
+  
+  # Pre-compute term groups if map_file method is used
+  term_groups <- NULL
+  if (ppn_jaccard_method == "map_file") {
+    term_groups <- split(TERM2GENE$gene, TERM2GENE$term)
   }
 
   gsea_paths <- c()
@@ -74,22 +102,20 @@ con_ppn_int <- function(
     # --- Differential Abundance ---
     if (ppn_da_method == "deseq2") {
       sub_abun_int <- round(sub_abun)
-      dds <- DESeq2::DESeqDataSetFromMatrix(countData = sub_abun_int, colData = sub_meta, design = ~ class)
+      dds <- DESeq2::DESeqDataSetFromMatrix(countData = sub_abun_int, colData = sub_meta, design = ~class)
       dds <- DESeq2::DESeq(dds)
-      res <- DESeq2::results(dds, contrast = c("class", cond1, cond2))
+      res <- DESeq2::results(dds, contrast = c("class", cond2, cond1))
       res_df <- as.data.frame(res)
       res_df$gene <- rownames(res_df)
-
     } else if (ppn_da_method == "edger") {
       y <- edgeR::DGEList(counts = sub_abun, group = sub_meta$class)
       y <- edgeR::calcNormFactors(y)
       y <- edgeR::estimateDisp(y)
-      et <- edgeR::exactTest(y, pair = c(cond2, cond1))
+      et <- edgeR::exactTest(y, pair = c(cond1, cond2))
       res_df <- et$table
       res_df$log2FoldChange <- res_df$logFC
       res_df$pvalue <- res_df$PValue
       res_df$gene <- rownames(res_df)
-
     } else if (ppn_da_method == "maaslin2") {
       # FIXED: Dynamic folder name to prevent overwriting
       maaslin_out <- file.path(output_dir, paste0("maaslin_results_", comp_name))
@@ -103,14 +129,20 @@ con_ppn_int <- function(
       )
       res_df <- fit_data$results
       res_df <- dplyr::rename(res_df, log2FoldChange = coef, pvalue = pval, gene = feature)
-
     } else if (ppn_da_method == "simple") {
-      grp1_vals <- sub_abun[, sub_meta$class == cond1]
-      grp2_vals <- sub_abun[, sub_meta$class == cond2]
+      grp1_vals <- sub_abun[, sub_meta$class == cond1, drop = FALSE]
+      grp2_vals <- sub_abun[, sub_meta$class == cond2, drop = FALSE]
       pvals <- apply(sub_abun, 1, function(x) {
-        g1 <- x[sub_meta$class == cond1]; g2 <- x[sub_meta$class == cond2]
-        wt <- tryCatch(wilcox.test(g1, g2), error = function(e) NA)
-        if(is.list(wt)) wt$p.value else NA
+        g1 <- x[sub_meta$class == cond1]
+        g2 <- x[sub_meta$class == cond2]
+        wt <- tryCatch(
+          wilcox.test(g1, g2),
+          error = function(e) {
+            # Removed warning here to avoid spamming the console for thousands of genes if data is sparse
+            NA
+          }
+        )
+        if (is.list(wt)) wt$p.value else NA
       })
       # Calculate Fold Change: Target (cond2) / Reference (cond1)
       fc <- (rowMeans(grp2_vals) + 1e-6) / (rowMeans(grp1_vals) + 1e-6)
@@ -119,8 +151,6 @@ con_ppn_int <- function(
     }
 
     # --- GSEA Analysis ---
-    map_raw <- read.csv(map_file, header = FALSE, stringsAsFactors = FALSE)
-    TERM2GENE <- data.frame(term = map_raw[,1], gene = map_raw[,2])
     res_df <- res_df[!is.na(res_df$pvalue) & !is.na(res_df$log2FoldChange), ]
 
     if (ppn_rank_by == "signed_log_pvalue") {
@@ -134,11 +164,17 @@ con_ppn_int <- function(
     res_df <- res_df[order(res_df$rank, decreasing = TRUE), ]
     gene_list <- setNames(res_df$rank, res_df$gene)
 
-    gsea_res <- tryCatch({
-      clusterProfiler::GSEA(gene_list, TERM2GENE = TERM2GENE, pvalueCutoff = ppn_pvalue_cutoff, pAdjustMethod = ppn_p_adjust_method, verbose = FALSE)
-    }, error = function(e) NULL)
+    gsea_res <- tryCatch(
+      {
+        clusterProfiler::GSEA(gene_list, TERM2GENE = TERM2GENE, pvalueCutoff = ppn_pvalue_cutoff, pAdjustMethod = ppn_p_adjust_method, verbose = FALSE)
+      },
+      error = function(e) {
+        warning("GSEA failed for comparison ", comp_name, ": ", e$message)
+        NULL
+      }
+    )
 
-    if (!is.null(gsea_res) && nrow(gsea_res) > 0) {
+    if (!is.null(gsea_res) && nrow(as.data.frame(gsea_res)) > 0) {
       gsea_out <- as.data.frame(gsea_res)
       fname <- paste0("gsea_results_", comp_name, ".csv")
       fpath <- file.path(output_dir, fname)
@@ -147,18 +183,40 @@ con_ppn_int <- function(
 
       # --- Jaccard Index ---
       sig_paths <- gsea_out$ID
-      genes_list <- strsplit(gsea_out$core_enrichment, "/")
-      names(genes_list) <- sig_paths
       jaccard_res <- data.frame()
 
-      if (length(genes_list) > 1) {
-        combos <- combn(names(genes_list), 2, simplify = FALSE)
-        for (cb in combos) {
-          u <- length(union(genes_list[[cb[1]]], genes_list[[cb[2]]]))
-          i <- length(intersect(genes_list[[cb[1]]], genes_list[[cb[2]]]))
-          idx <- ifelse(u > 0, i/u, 0)
-          if (idx >= ppn_jaccard_cutoff) {
-            jaccard_res <- rbind(jaccard_res, data.frame(FunctionID_1 = cb[1], FunctionID_2 = cb[2], jaccard_index = idx))
+      if (length(sig_paths) > 1) {
+        combos <- combn(sig_paths, 2, simplify = FALSE)
+
+        if (ppn_jaccard_method == "gsea_core") {
+          # Jaccard index based on the GSEA core enrichment overlapping genes
+          genes_list <- strsplit(gsea_out$core_enrichment, "/")
+          names(genes_list) <- sig_paths
+
+          for (cb in combos) {
+            u <- length(union(genes_list[[cb[1]]], genes_list[[cb[2]]]))
+            i <- length(intersect(genes_list[[cb[1]]], genes_list[[cb[2]]]))
+            idx <- ifelse(u > 0, i / u, 0)
+            if (idx >= ppn_jaccard_cutoff) {
+              jaccard_res <- rbind(jaccard_res, data.frame(FunctionID_1 = cb[1], FunctionID_2 = cb[2], jaccard_index = idx))
+            }
+          }
+        } else if (ppn_jaccard_method == "map_file") {
+          # Jaccard index based on mapping file fully shared genes
+          # term_groups is already split outside the loop
+
+
+          for (cb in combos) {
+            # Guard against missing terms in the map file split logic, though they should exist
+            g1 <- if (cb[1] %in% names(term_groups)) term_groups[[cb[1]]] else character(0)
+            g2 <- if (cb[2] %in% names(term_groups)) term_groups[[cb[2]]] else character(0)
+
+            u <- length(union(g1, g2))
+            i <- length(intersect(g1, g2))
+            idx <- ifelse(u > 0, i / u, 0)
+            if (idx >= ppn_jaccard_cutoff) {
+              jaccard_res <- rbind(jaccard_res, data.frame(FunctionID_1 = cb[1], FunctionID_2 = cb[2], jaccard_index = idx))
+            }
           }
         }
       }
@@ -168,5 +226,5 @@ con_ppn_int <- function(
       jaccard_paths <- c(jaccard_paths, jpath)
     }
   }
-  return(list(gsea_paths = gsea_paths, jaccard_paths = jaccard_paths))
+  list(gsea_paths = gsea_paths, jaccard_paths = jaccard_paths)
 }

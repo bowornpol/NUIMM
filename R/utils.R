@@ -27,5 +27,5 @@ read_input_file <- function(file_path, file_type = c("csv", "tsv"), ...) {
   } else {
     stop("Invalid file_type. Must be 'csv' or 'tsv'.")
   }
-  return(data)
+  data
 }
