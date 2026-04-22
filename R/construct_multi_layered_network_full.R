@@ -1,7 +1,8 @@
 #' Multi-layered Network Construction (End-to-End)
 #'
-#' Standardizes input (Universal, HUMAnN, PICRUSt), builds PPN, MPN, and PMN layers,
-#' and integrates them into a final visualized network.
+#' @details
+#' Orchestrates the construction of a multi-layered network by standardizing inputs,
+#' executing the layer-building functions (PPN, MPN, PMN), and triggering integration.
 #'
 #' @param gene_abun_file Character path to gene abundance file.
 #' @param path_abun_file Character path to pathway abundance file.
@@ -9,7 +10,7 @@
 #' @param met_con_file Character path to metabolite concentration file.
 #' @param metadata_file Character path to metadata file (Must contain 'SampleID' and 'class').
 #' @param taxonomy_file Character path to taxonomy file (Required for 'picrust').
-#' @param map_file Character path to pathway-to-gene mapping file.
+#' @param map_file Character path to pathway-to-gene mapping file. Required if ppn_map_database is 'custom'.
 #' @param output_dir Character path to output directory.
 #' @param format Input format options: "universal", "humann", "picrust".
 #' @param ppn_da_method DA method options: "deseq2", "edger", "maaslin2", "simple".
@@ -18,6 +19,7 @@
 #' @param ppn_p_adjust_method GSEA p-adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".
 #' @param ppn_pvalue_cutoff Numeric p-value cutoff for GSEA.
 #' @param ppn_jaccard_cutoff Numeric Jaccard cutoff for PPN edges.
+#' @param ppn_jaccard_method Method for Jaccard index: "gsea_core", "map_file".
 #' @param comparisons_list List of character vectors (e.g., list(c("Healthy", "Stage_III_IV"))). First element is Reference.
 #' @param mpn_filtering MPN filtering options: "unfiltered", "mean", "median", "top10%", "top25%", "top50%", "top75%".
 #' @param pmn_corr_method Correlation options: "spearman", "pearson", "kendall".
@@ -29,33 +31,35 @@
 #' @return Vector of final network file paths.
 #' @export
 con_mln <- function(
-    gene_abun_file,
-    path_abun_file,
-    path_con_file,
-    met_con_file,
-    metadata_file,
-    taxonomy_file = NULL,
-    map_file,
-    output_dir,
-    format = c("universal", "humann", "picrust"),
-    ppn_da_method = c("deseq2", "edger", "maaslin2", "simple"),
-    ppn_map_database = c("kegg", "metacyc", "custom"),
-    ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
-    ppn_p_adjust_method = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none"),
-    ppn_pvalue_cutoff = 0.05,
-    ppn_jaccard_cutoff = 0.2,
-    comparisons_list = NULL,
-    mpn_filtering = c("unfiltered", "mean", "median", "top10%", "top25%", "top50%", "top75%"),
-    pmn_corr_method = c("spearman", "pearson", "kendall"),
-    pmn_filter_by = c("none", "p_value", "q_value"),
-    pmn_corr_cutoff = 0.3,
-    pmn_pvalue_cutoff = 0.05,
-    pmn_q_value_cutoff = 0.05,
-    pmn_p_adjust_method = "fdr"
+  gene_abun_file,
+  path_abun_file,
+  path_con_file,
+  met_con_file,
+  metadata_file,
+  taxonomy_file = NULL,
+  map_file,
+  output_dir,
+  format = c("universal", "humann", "picrust"),
+  ppn_da_method = c("deseq2", "edger", "maaslin2", "simple"),
+  ppn_map_database = c("kegg", "metacyc", "custom"),
+  ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
+  ppn_p_adjust_method = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none"),
+  ppn_pvalue_cutoff = 0.05,
+  ppn_jaccard_cutoff = 0.2,
+  ppn_jaccard_method = c("gsea_core", "map_file"),
+  comparisons_list = NULL,
+  mpn_filtering = c("unfiltered", "mean", "median", "top10%", "top25%", "top50%", "top75%"),
+  pmn_corr_method = c("spearman", "pearson", "kendall"),
+  pmn_filter_by = c("none", "p_value", "q_value"),
+  pmn_corr_cutoff = 0.3,
+  pmn_pvalue_cutoff = 0.05,
+  pmn_q_value_cutoff = 0.05,
+  pmn_p_adjust_method = "fdr"
 ) {
   format <- match.arg(format)
   ppn_da_method <- match.arg(ppn_da_method)
   ppn_map_database <- match.arg(ppn_map_database)
+  ppn_jaccard_method <- match.arg(ppn_jaccard_method)
 
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
@@ -68,9 +72,9 @@ con_mln <- function(
   taxonomy_file_to_pass <- NULL
 
   if (format == "universal") {
-    df <- read.csv(path_con_file, stringsAsFactors = FALSE)
+    df <- read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE)
     required <- c("SampleID", "PathwayID", "TaxonID", "contribution")
-    if (!all(required %in% colnames(df))) stop("Universal format requires columns: ", paste(required, collapse=", "))
+    if (!all(required %in% colnames(df))) stop("Universal format requires columns: ", paste(required, collapse = ", "))
 
     colnames(df)[colnames(df) == "contribution"] <- "taxon_function_abun"
     colnames(df)[colnames(df) == "PathwayID"] <- "FunctionID"
@@ -78,20 +82,18 @@ con_mln <- function(
     df$TaxonID <- df$FeatureID
     write.csv(df, processed_contrib_file, row.names = FALSE)
     # Universal format already has taxonomy info in the file, so we pass NULL
-
   } else if (format == "picrust") {
     if (is.null(taxonomy_file)) stop("Taxonomy file is required for PICRUSt format.")
-    contrib <- read.csv(path_con_file, stringsAsFactors = FALSE)
-    tax <- read.csv(taxonomy_file, stringsAsFactors = FALSE)
+    contrib <- read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE)
+    tax <- read_input_file(taxonomy_file, file_type = "csv", stringsAsFactors = FALSE)
 
     merged <- merge(contrib, tax, by = "FeatureID")
     final_df <- merged[, c("SampleID", "PathwayID", "FeatureID", "TaxonID", "taxon_function_abun")]
     colnames(final_df)[colnames(final_df) == "PathwayID"] <- "FunctionID"
     write.csv(final_df, processed_contrib_file, row.names = FALSE)
     # PICRUSt data is now merged, so we pass NULL to avoid double merging
-
   } else if (format == "humann") {
-    df <- read.csv(path_con_file, stringsAsFactors = FALSE, check.names = FALSE)
+    df <- read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE, check.names = FALSE)
     sample_cols <- colnames(df)[-1]
     long_df <- tidyr::pivot_longer(df, cols = dplyr::all_of(sample_cols), names_to = "SampleID", values_to = "taxon_function_abun")
 
@@ -121,6 +123,7 @@ con_mln <- function(
     ppn_p_adjust_method = ppn_p_adjust_method,
     ppn_pvalue_cutoff = ppn_pvalue_cutoff,
     ppn_jaccard_cutoff = ppn_jaccard_cutoff,
+    ppn_jaccard_method = ppn_jaccard_method,
     comparisons_list = comparisons_list
   )
 
@@ -173,7 +176,7 @@ con_mln <- function(
     )
 
     # Handle case where no correlations found
-    curr_pmn <- if(length(pmn_files) > 0) pmn_files[1] else NULL
+    curr_pmn <- if (length(pmn_files) > 0) pmn_files[1] else NULL
 
     # --- Final Integration (MLN) ---
     # Double check that curr_mpn is valid before reading
@@ -194,5 +197,5 @@ con_mln <- function(
   }
 
   message("Multi-Layered Network Pipeline Complete.")
-  return(final_networks)
+  final_networks
 }

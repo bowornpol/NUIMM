@@ -45,6 +45,10 @@ con_pmn_int(
 Vector of PMN file paths.
 }
 \description{
-Correlates pathway abundance and metabolites.
+Internal Pathway-Metabolite Network Helper
+}
+\details{
+Connects Pathways to Metabolites by calculating pairwise correlations between 
+GSEA-significant pathways and metabolites, filtering results by significance.
 }
 \keyword{internal}
