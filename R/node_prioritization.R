@@ -44,310 +44,147 @@
 #'    metabolite is used as a seed, all other edges connected to *other* metabolite
 #'    nodes (i.e., not the current seed) are excluded from the network for that
 #'    specific diffusion run. If `FALSE`, the full network is used for each seed.
+#' @param visualize Logical. If TRUE, generates stabilization curve and lollipop rank plots. Defaults to TRUE.
+#' @param top_n_plot Integer. Top N nodes to display in the lollipop rank chart.
+#' @param node_colors Named character vector defining plotting colors for node types.
+#' @param plot_width Numeric. Figure width in inches.
+#' @param plot_height Numeric. Figure height in inches.
+#' @param plot_dpi Numeric. Output image resolution (DPI).
 #' @return The function's primary output consists of multiple
 #'    CSV files (heat scores and correlation data) and JPG plots (correlation plots),
 #'    saved to the specified `output_directory`, one set for each metabolite seed node.
 #' @references
 #' Carlin DE, Demchak B, Pratt D, Sage E, Ideker T. Network propagation in the cytoscape cyberinfrastructure. PLoS computational biology. 2017;13(10):e1005598.
 #' @export
-utils::globalVariables(c("edge_type", "Feature2", "Feature1", "from", "to", "Node_A", "Node_B", "edge_score", "Heat_score", "Time", "Correlation"))
+utils::globalVariables(c("edge_type", "Feature2", "Feature1", "from", "to", "Node_A", "Node_B", "edge_score", "Heat_score", "Time", "Correlation", "type"))
 
 node_prior <- function(
   multi_layered_network_file,
   output_directory,
   file_type = c("csv", "tsv"),
   time_step_interval = 0.01,
-  stabilization_threshold = 0.0001, # This is 1e-04
+  stabilization_threshold = 0.0001,
   stabilization_window_size = 10,
-  filter_other_metabolite_edges
+  filter_other_metabolite_edges,
+  visualize = TRUE,
+  top_n_plot = 20, 
+  node_colors = c("Microbe" = "#D55E00", "Pathway" = "#0072B2", "Metabolite" = "#009E73"),
+  plot_width = 10, 
+  plot_height = 8, 
+  plot_dpi = 600
 ) {
   file_type <- match.arg(file_type)
   message("Starting node prioritization using LHD algorithm.")
 
-  # Create output directory if it doesn't exist
   if (!dir.exists(output_directory)) {
     dir.create(output_directory, recursive = TRUE)
     message("Created output directory: ", output_directory)
-  } else {
-    message("Output directory already exists: ", output_directory)
   }
 
-  # Extract base name from input file for output specificity
   input_file_base_name <- tools::file_path_sans_ext(basename(multi_layered_network_file))
-  # Clean the base name for use in filenames (e.g., replace non-alphanumeric with underscore)
   cleaned_input_file_name <- gsub("[^A-Za-z0-9_]", "", input_file_base_name)
 
-  # 1. Load the multi-layered network file (FULL network data)
   message("\n1. Loading multi-layered network from: ", multi_layered_network_file)
-  if (!file.exists(multi_layered_network_file)) {
-    stop("Input network file not found: '", multi_layered_network_file, "'. Cannot proceed.")
-  }
+  if (!file.exists(multi_layered_network_file)) stop("Input network file not found.")
 
-  combined_data_full <- tryCatch( # Renamed to combined_data_full to denote original data
-    read_input_file(multi_layered_network_file, file_type = file_type, stringsAsFactors = FALSE),
-    error = function(e) {
-      stop(paste("Error reading multi-layered network file '", multi_layered_network_file, "': ", e$message, sep = ""))
-    }
-  )
+  combined_data_full <- read_input_file(multi_layered_network_file, file_type = file_type, stringsAsFactors = FALSE)
 
-  # Validate required columns in combined_data_full (now expecting snake_case)
   required_cols_network <- c("Feature1", "Feature2", "edge_score", "edge_type")
   if (!all(required_cols_network %in% colnames(combined_data_full))) {
-    stop(paste("Input network file '", multi_layered_network_file, "' must contain columns: ", paste(required_cols_network, collapse = ", "), ". Please ensure it's the output from Module 2, Step 4.", sep = ""))
+    stop("Input network file missing required columns.")
   }
 
-  # Ensure edge_score is numeric
-  if (!is.numeric(combined_data_full$edge_score)) {
-    stop("Column 'edge_score' in the input network file must be numeric.")
-  }
+  all_metabolite_nodes <- as.character(unique(dplyr::pull(dplyr::filter(combined_data_full, edge_type == "Pathway-Metabolite"), Feature2)))
 
-  # 2. Identify all unique metabolite nodes from the FULL network (for looping and for filtering)
-  all_metabolite_nodes <- unique(
-    dplyr::pull(
-      dplyr::filter(combined_data_full, edge_type == "Pathway-Metabolite"), # Changed Edge_Type
-      Feature2
-    )
-  )
-  all_metabolite_nodes <- as.character(all_metabolite_nodes)
+  if (length(all_metabolite_nodes) == 0) stop("No metabolite nodes found in the network.")
+  
+  H_vector_func_fast <- function(t_val, U, lambda, U_T_H0) { as.vector(U %*% (exp(-lambda * t_val) * U_T_H0)) }
 
-  if (length(all_metabolite_nodes) == 0) {
-    stop("No metabolite nodes found in the network (based on 'Pathway-Metabolite' edge_type). Cannot proceed diffusion.") # Changed Edge_Type
-  }
-  message("Identified ", length(all_metabolite_nodes), " unique metabolite nodes for seeding and potential filtering.")
-
-  # Define the function for heat vector at time t using Eigendecomposition
-  # This is orders of magnitude faster than calling expm::expm() in a loop
-  H_vector_func_fast <- function(t_val, U, lambda, U_T_H0) {
-    # exp(-Lambda * t) is just the element-wise exponential of the eigenvalues
-    exp_neg_lambda_t <- exp(-lambda * t_val)
-    # H(t) = U * (exp(-Lambda * t) * (U^T * H0))
-    as.vector(U %*% (exp_neg_lambda_t * U_T_H0))
-  }
-
-  # Function to find stabilization time and return correlations
-  find_stabilization_data <- function(U, lambda, U_T_H0, time_interval, threshold, window_size) {
-    time_steps_local <- seq(0, 1, by = time_interval)
-
-    heat_vectors_over_time <- sapply(time_steps_local, function(t) {
-      H_vector_func_fast(t, U, lambda, U_T_H0)
-    })
-
-    if (ncol(heat_vectors_over_time) < 2) {
-      # If only one time step or no progression, return empty correlations and last time step
-      return(list(stabilization_time = time_steps_local[length(time_steps_local)], correlations_df = data.frame(Time = numeric(), Correlation = numeric())))
-    }
-
-    correlations <- numeric(ncol(heat_vectors_over_time) - 1)
-
-    for (i in seq_along(correlations)) {
-      H_current <- heat_vectors_over_time[, i + 1]
-      H_prev <- heat_vectors_over_time[, i]
-      correlations[i] <- ifelse(sd(H_current) == 0 || sd(H_prev) == 0, 1, stats::cor(H_current, H_prev, method = "spearman", use = "complete.obs"))
-    }
-
-    correlation_df <- data.frame(Time = time_steps_local[-1], Correlation = correlations) # Time corresponds to the later time point of the pair
-
-    stabilization_t_found <- time_steps_local[length(correlations) + 1] # Default to last time if no stabilization
-
-    # Ensure window_size is not larger than available correlations
-    if (window_size >= length(correlations)) {
-      stabilization_t_found <- time_steps_local[length(correlations) + 1]
-    } else {
-      for (i in seq(length(correlations) - window_size + 1)) {
-        diffs <- abs(diff(correlations[i:(i + window_size - 1)]))
-        if (all(diffs < threshold)) {
-          stabilization_t_found <- time_steps_local[i + 1] # Time at the start of the stabilization *window* of the second vector in the pair.
-          break
-        }
-      }
-    }
-
-    list(stabilization_time = stabilization_t_found, correlations_df = correlation_df)
-  }
-
-  # 3. Loop through each metabolite node to perform heat diffusion
   message("\nPerforming heat diffusion for each metabolite seed node...")
-  for (seed_metabolite_id in all_metabolite_nodes) { # Loop through all identified metabolites as seeds
+  for (seed_metabolite_id in all_metabolite_nodes) {
     message("  Processing seed metabolite: '", seed_metabolite_id, "'")
 
-    # --- Determine network for current seed based on filter_other_metabolite_edges ---
     if (filter_other_metabolite_edges) {
-      message("    Applying filtering: Excluding all nodes that are metabolites EXCEPT the current seed ('", seed_metabolite_id, "') and their connected edges.")
-
-      # Identify all other metabolite nodes to exclude (all metabolites MINUS the current seed)
-      other_metabolite_nodes_to_exclude <- setdiff(all_metabolite_nodes, seed_metabolite_id)
-
-      # Filter edges: keep only edges where *neither* Feature1 nor Feature2 is one of the 'other metabolite' nodes
-      current_combined_data <- dplyr::filter(
-        combined_data_full,
-        !(Feature1 %in% other_metabolite_nodes_to_exclude) &
-          !(Feature2 %in% other_metabolite_nodes_to_exclude)
-      )
-
-      # Check if the seed node itself is still present after filtering
-      if (!seed_metabolite_id %in% unique(c(current_combined_data$Feature1, current_combined_data$Feature2))) {
-        warning("  Seed metabolite '", seed_metabolite_id, "' is not present in the graph after filtering. This implies it was only connected to other metabolites, which were removed. Skipping diffusion for this seed.")
-        next
-      }
+      exclude <- setdiff(all_metabolite_nodes, seed_metabolite_id)
+      current_combined_data <- dplyr::filter(combined_data_full, !(Feature1 %in% exclude) & !(Feature2 %in% exclude))
+      if (!seed_metabolite_id %in% unique(c(current_combined_data$Feature1, current_combined_data$Feature2))) next
     } else {
-      # Use the full network data (original behavior)
       current_combined_data <- combined_data_full
-      message("    Using the full network for diffusion.")
     }
 
-    # --- Convert edge_score to absolute value ---
     current_combined_data$edge_score <- abs(current_combined_data$edge_score)
-    message("    edge_scores converted to absolute values.")
+    all_nodes <- unique(c(current_combined_data$Feature1, current_combined_data$Feature2))
+    
+    g_current <- igraph::graph_from_data_frame(d = current_combined_data[, c("Feature1", "Feature2")], directed = FALSE, vertices = all_nodes)
+    
+    df_edges <- dplyr::mutate(dplyr::rowwise(current_combined_data), Node_A = min(Feature1, Feature2), Node_B = max(Feature1, Feature2))
+    g_edges <- dplyr::mutate(dplyr::rowwise(igraph::as_data_frame(g_current, what = "edges")), Node_A = min(from, to), Node_B = max(from, to))
+    igraph::E(g_current)$weight <- df_edges$edge_score[match(paste0(g_edges$Node_A, "_", g_edges$Node_B), paste0(df_edges$Node_A, "_", df_edges$Node_B))]
+    igraph::E(g_current)$weight[is.na(igraph::E(g_current)$weight)] <- 0
 
-    # --- Create graph and Laplacian matrix for the CURRENT network configuration ---
-    # This block is now inside the loop, as the network structure changes per seed if filtered
-
-    # Check for valid edges/nodes to create a graph
-    if (nrow(current_combined_data) == 0) {
-      warning("  No edges found for graph construction for seed '", seed_metabolite_id, "' after filtering. Skipping diffusion.")
-      next
-    }
-
-    # Get all unique nodes from the current filtered data to ensure the graph includes them
-    all_nodes_in_current_data <- unique(c(current_combined_data$Feature1, current_combined_data$Feature2))
-
-    g_current <- igraph::graph_from_data_frame(
-      d = current_combined_data[, c("Feature1", "Feature2")], directed = FALSE,
-      vertices = all_nodes_in_current_data
-    ) # Explicitly define vertices
-
-    # Assign weights (handling potential mismatches as before)
-    graph_edges_for_weighting <- dplyr::ungroup(
-      dplyr::mutate(
-        dplyr::rowwise(igraph::as_data_frame(g_current, what = "edges")),
-        Node_A = min(from, to), Node_B = max(from, to)
-      )
-    )
-
-    current_combined_data_sorted <- dplyr::ungroup(
-      dplyr::distinct(
-        dplyr::select(
-          dplyr::mutate(
-            dplyr::rowwise(current_combined_data),
-            Node_A = min(Feature1, Feature2), Node_B = max(Feature1, Feature2)
-          ),
-          Node_A, Node_B, edge_score
-        )
-      )
-    )
-
-    # Ensure correct matching for weights
-    # Create a unique identifier for edges in both dataframes for robust matching
-    edge_id_graph <- paste0(graph_edges_for_weighting$Node_A, "_", graph_edges_for_weighting$Node_B)
-    edge_id_data <- paste0(current_combined_data_sorted$Node_A, "_", current_combined_data_sorted$Node_B)
-
-    matched_weights <- current_combined_data_sorted$edge_score[match(edge_id_graph, edge_id_data)]
-
-    igraph::E(g_current)$weight <- matched_weights
-
-    if (any(is.na(igraph::E(g_current)$weight))) {
-      warning("  Some edges in the graph for seed '", seed_metabolite_id, "' could not be matched to an 'edge_score' in the input data. Assigning 0 weight to unmatched edges.")
-      igraph::E(g_current)$weight[is.na(igraph::E(g_current)$weight)] <- 0
-    }
-
-    # If the graph has become too small (e.g., only 1 node, no edges, or disconnected)
-    if (igraph::vcount(g_current) < 2 || igraph::ecount(g_current) == 0 || !igraph::is.connected(g_current)) {
-      warning("  Graph for seed '", seed_metabolite_id, "' is too sparse, disconnected, or lacks sufficient nodes/edges after filtering (nodes: ", igraph::vcount(g_current), ", edges: ", igraph::ecount(g_current), ", connected: ", igraph::is.connected(g_current), "). Skipping diffusion for this seed as Laplacian cannot be computed meaningfully.")
-      next
-    }
-
-    L_current <- igraph::laplacian_matrix(g_current, weights = igraph::E(g_current)$weight)
-    L_current <- as.matrix(L_current)
-
-    # Mathematical Optimization: Eigendecomposition of the symmetric Laplacian matrix
-    # This allows us to compute exp(-L*t) extremely fast for any t without using expm
+    L_current <- as.matrix(igraph::laplacian_matrix(g_current, weights = igraph::E(g_current)$weight))
     eig <- eigen(L_current, symmetric = TRUE)
-    U <- eig$vectors
-    lambda <- eig$values
+    
+    H_0 <- numeric(igraph::vcount(g_current))
+    names(H_0) <- igraph::V(g_current)$name
+    H_0[which(names(H_0) == seed_metabolite_id)] <- 1.0
+    U_T_H0 <- t(eig$vectors) %*% H_0
 
-    # Initialize the heat vector H_0 for the current seed within the CURRENT graph's nodes
-    H_0_current_graph <- numeric(igraph::vcount(g_current))
-    names(H_0_current_graph) <- igraph::V(g_current)$name
-    seed_index_current_graph <- which(igraph::V(g_current)$name == seed_metabolite_id)
-
-    if (length(seed_index_current_graph) == 0) {
-      warning("  Seed metabolite '", seed_metabolite_id, "' not found in the *filtered* graph's node set. This should not happen if previous checks are correct. Skipping diffusion.")
-      next
+    t_seq <- seq(0, 1, by = time_step_interval)
+    h_mat <- sapply(t_seq, function(t) H_vector_func_fast(t, eig$vectors, eig$values, U_T_H0))
+    corrs <- sapply(1:(ncol(h_mat)-1), function(i) stats::cor(h_mat[, i+1], h_mat[, i], method = "spearman"))
+    
+    stab_t <- t_seq[length(t_seq)]
+    for (i in seq_len(length(corrs) - stabilization_window_size + 1)) {
+      if (all(abs(diff(corrs[i:(i + stabilization_window_size - 1)])) < stabilization_threshold)) {
+        stab_t <- t_seq[i + 1]; break
+      }
     }
-    H_0_current_graph[seed_index_current_graph] <- 1.0
 
-    # Pre-compute U^T * H0 since it is constant across all time steps for this seed
-    U_T_H0 <- t(U) %*% H_0_current_graph
+    message("    Stabilization time for '", seed_metabolite_id, "': t = ", round(stab_t, 4))
+    final_heat <- H_vector_func_fast(stab_t, eig$vectors, eig$values, U_T_H0)
+    output_df <- dplyr::arrange(data.frame(Node = names(H_0), Heat_score = final_heat, stringsAsFactors = FALSE), dplyr::desc(Heat_score))
+    
+    cln_seed <- gsub("[^A-Za-z0-9_]", "", seed_metabolite_id)
+    write.csv(output_df, file.path(output_directory, paste0("heat_scores_", cln_seed, ".csv")), row.names = FALSE)
 
-    # Find stabilization time and get correlations data
-    stabilization_data_result <- find_stabilization_data(U, lambda, U_T_H0, time_step_interval, stabilization_threshold, stabilization_window_size)
-    stabilization_t <- stabilization_data_result$stabilization_time
-    correlation_df <- stabilization_data_result$correlations_df
+    if (visualize) {
+      library(ggplot2)
+      
+      corr_df <- data.frame(Time = t_seq[-1], Correlation = corrs)
+      p1 <- ggplot2::ggplot(corr_df, ggplot2::aes(x = Time, y = Correlation)) +
+        ggplot2::geom_line(linewidth = 1, color = "black") +
+        ggplot2::geom_vline(xintercept = stab_t, linetype = "dashed", color = "#D55E00", linewidth = 1) +
+        ggplot2::annotate("text", x = stab_t, y = min(corrs), label = paste("Stab t =", stab_t), color = "#D55E00", hjust = -0.1, family = "sans") +
+        ggplot2::labs(x = "Time Step", y = "Spearman Correlation") +
+        ggplot2::theme_classic(base_family = "sans") +
+        ggplot2::theme(axis.title = ggplot2::element_text(face = "bold"), plot.margin = ggplot2::margin(10, 10, 10, 10))
+      
+      ggplot2::ggsave(file.path(output_directory, paste0("lhd_curve_", cln_seed, ".pdf")), plot = p1, width = 6, height = 4, device = cairo_pdf)
 
-    message("    Stabilization time for '", seed_metabolite_id, "': t = ", round(stabilization_t, 4))
+      top_df <- head(output_df, top_n_plot)
+      top_df$type <- sapply(top_df$Node, function(x) {
+        if (grepl("d__|p__|c__|o__|f__|g__|s__|Bacteria", x)) "Microbe" else if (grepl("^ko[0-9]+", x)) "Pathway" else "Metabolite"
+      })
+      top_df$type <- factor(top_df$type, levels = c("Microbe", "Pathway", "Metabolite"))
 
-    # Calculate final heat scores at stabilization time
-    final_heat_scores <- H_vector_func_fast(stabilization_t, U, lambda, U_T_H0)
+      p2 <- ggplot2::ggplot(top_df, ggplot2::aes(x = reorder(Node, Heat_score), y = Heat_score, color = type)) +
+        ggplot2::geom_segment(ggplot2::aes(xend = Node, yend = 0), linewidth = 1.2) +
+        ggplot2::geom_point(size = 4) +
+        ggplot2::scale_color_manual(name = "Node Type", values = node_colors) +
+        ggplot2::coord_flip() +
+        ggplot2::labs(x = "Network Node", y = "Diffusion Heat Score") +
+        ggplot2::theme_classic(base_family = "sans") +
+        ggplot2::theme(
+          axis.text.y = ggplot2::element_text(size = 10, face = "bold", color = "black"),
+          axis.title = ggplot2::element_text(face = "bold", size = 12),
+          legend.position = "right",
+          plot.margin = ggplot2::margin(10, 10, 10, 10)
+        )
 
-    # Create output data frame for this metabolite
-    output_df <- dplyr::arrange(
-      data.frame(
-        Node = igraph::V(g_current)$name, # Nodes from the current filtered graph
-        Heat_score = round(final_heat_scores, 10), # Changed Heat_Score to Heat_score
-        stringsAsFactors = FALSE
-      ),
-      dplyr::desc(Heat_score) # Sort by heat score (descending)
-    )
-
-    # Generate and save output files with cleaned input file name
-    cleaned_seed_id <- gsub("[^A-Za-z0-9_]", "", seed_metabolite_id) # Clean seed ID for filename
-
-    # Save heat scores to CSV
-    output_file_name_heat <- paste0("heat_scores_", cleaned_seed_id, "_", cleaned_input_file_name, ".csv")
-    output_path_heat <- file.path(output_directory, output_file_name_heat)
-    write.csv(output_df, file = output_path_heat, row.names = FALSE)
-    message("    Saved heat scores for '", seed_metabolite_id, "' to: ", output_path_heat)
-
-    # Save correlation data to CSV
-    output_file_name_correlation_csv <- paste0("spearman_correlations_", cleaned_seed_id, "_", cleaned_input_file_name, ".csv")
-    output_path_correlation_csv <- file.path(output_directory, output_file_name_correlation_csv)
-    write.csv(correlation_df, file = output_path_correlation_csv, row.names = FALSE)
-    message("    Saved Spearman correlation data for '", seed_metabolite_id, "' to: ", output_path_correlation_csv)
-
-    # Generate and save correlation plot
-    correlation_plot <- ggplot2::ggplot(correlation_df, ggplot2::aes(x = Time, y = Correlation)) +
-      ggplot2::geom_line(size = 1.2, color = "#3C5488") +
-      ggplot2::geom_point(size = 2.5, color = "#3C5488") +
-      ggplot2::geom_vline(xintercept = stabilization_t, linetype = "dashed", color = "#E64B35", size = 1) +
-      ggplot2::geom_text(
-        ggplot2::aes(
-          x = stabilization_t,
-          y = max(Correlation, na.rm = TRUE) * 0.95,
-          label = paste("Stabilization t =", round(stabilization_t, 4))
-        ),
-        color = "#E64B35", hjust = -0.1, vjust = 1.0, size = 5, fontface = "italic", family = "sans"
-      ) +
-      ggplot2::labs(
-        x = "Time Step",
-        y = "Spearman Correlation (Current vs. Previous)"
-      ) +
-      ggplot2::scale_x_continuous(breaks = seq(0, 1, by = 0.1)) +
-      ggplot2::theme_classic(base_family = "sans", base_size = 12) +
-      ggplot2::theme(
-        axis.title = ggplot2::element_text(face = "bold", size = 12, color = "black"),
-        axis.text = ggplot2::element_text(size = 10, color = "black"),
-        axis.line = ggplot2::element_line(size = 0.8, color = "black"),
-        axis.ticks = ggplot2::element_line(color = "black", size = 0.8),
-        plot.title = ggplot2::element_blank(),
-        plot.margin = ggplot2::margin(1, 1, 1, 1, "cm")
-      )
-
-    output_file_name_plot <- paste0("correlation_plot_", cleaned_seed_id, "_", cleaned_input_file_name, ".jpg")
-    output_path_plot <- file.path(output_directory, output_file_name_plot)
-    ggplot2::ggsave(output_path_plot, plot = correlation_plot, width = 8, height = 5, dpi = 600)
-    message("    Saved correlation plot for '", seed_metabolite_id, "' to: ", output_path_plot)
+      ggplot2::ggsave(file.path(output_directory, paste0("prioritization_rank_", cln_seed, ".pdf")), plot = p2, width = plot_width, height = plot_height, device = cairo_pdf)
+      ggplot2::ggsave(file.path(output_directory, paste0("prioritization_rank_", cln_seed, ".png")), plot = p2, width = plot_width, height = plot_height, dpi = plot_dpi, bg = "white")
+    }
   }
-
-  message("Node prioritization complete.")
   invisible(NULL)
 }
