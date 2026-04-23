@@ -30,7 +30,15 @@ con_mln(
   pmn_corr_cutoff = 0.3,
   pmn_pvalue_cutoff = 0.05,
   pmn_q_value_cutoff = 0.05,
-  pmn_p_adjust_method = "fdr"
+  pmn_p_adjust_method = "fdr",
+  visualize = TRUE,
+  layout_method = "sugiyama",
+  node_colors = c(Microbe = "#D55E00", Pathway = "#0072B2", Metabolite = "#009E73"),
+  node_shapes = c(Microbe = 24, Pathway = 21, Metabolite = 22),
+  base_node_size = 6,
+  plot_width = 12,
+  plot_height = 10,
+  plot_dpi = 600
 )
 }
 \arguments{
@@ -81,6 +89,22 @@ con_mln(
 \item{pmn_q_value_cutoff}{Numeric q-value cutoff.}
 
 \item{pmn_p_adjust_method}{PMN q-value adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".}
+
+\item{visualize}{Logical. If TRUE, generates publication-ready network visualizations. Defaults to TRUE.}
+
+\item{layout_method}{Character. Layout algorithm for ggraph (e.g., "sugiyama" for hierarchical).}
+
+\item{node_colors}{Named character vector for Okabe-Ito colorblind-safe node mapping.}
+
+\item{node_shapes}{Named numeric vector for base R shape mapping by node type.}
+
+\item{base_node_size}{Numeric. Base size for nodes in the visualization.}
+
+\item{plot_width}{Numeric. Width of the output plot in inches.}
+
+\item{plot_height}{Numeric. Height of the output plot in inches.}
+
+\item{plot_dpi}{Numeric. Resolution for the output PNG visualization.}
 }
 \value{
 Vector of final network file paths.

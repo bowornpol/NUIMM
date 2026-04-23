@@ -28,6 +28,14 @@
 #' @param pmn_pvalue_cutoff Numeric p-value cutoff.
 #' @param pmn_q_value_cutoff Numeric q-value cutoff.
 #' @param pmn_p_adjust_method PMN q-value adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".
+#' @param visualize Logical. If TRUE, generates publication-ready network visualizations. Defaults to TRUE.
+#' @param layout_method Character. Layout algorithm for ggraph (e.g., "sugiyama" for hierarchical).
+#' @param node_colors Named character vector for Okabe-Ito colorblind-safe node mapping.
+#' @param node_shapes Named numeric vector for base R shape mapping by node type.
+#' @param base_node_size Numeric. Base size for nodes in the visualization.
+#' @param plot_width Numeric. Width of the output plot in inches.
+#' @param plot_height Numeric. Height of the output plot in inches.
+#' @param plot_dpi Numeric. Resolution for the output PNG visualization.
 #' @return Vector of final network file paths.
 #' @export
 con_mln <- function(
@@ -54,7 +62,15 @@ con_mln <- function(
   pmn_corr_cutoff = 0.3,
   pmn_pvalue_cutoff = 0.05,
   pmn_q_value_cutoff = 0.05,
-  pmn_p_adjust_method = "fdr"
+  pmn_p_adjust_method = "fdr",
+  visualize = TRUE,
+  layout_method = "sugiyama",
+  node_colors = c("Microbe" = "#D55E00", "Pathway" = "#0072B2", "Metabolite" = "#009E73"),
+  node_shapes = c("Microbe" = 24, "Pathway" = 21, "Metabolite" = 22),
+  base_node_size = 6,
+  plot_width = 12, 
+  plot_height = 10, 
+  plot_dpi = 600
 ) {
   format <- match.arg(format)
   ppn_da_method <- match.arg(ppn_da_method)
@@ -66,9 +82,6 @@ con_mln <- function(
   message("--- Preprocessing Data (Format: ", format, ") ---")
 
   processed_contrib_file <- file.path(output_dir, "processed_contribution.csv")
-
-  # Initialize variable to control if taxonomy file is passed to MPN step
-  # Default is NULL (do not pass), only change for PICRUSt if needed
   taxonomy_file_to_pass <- NULL
 
   if (format == "universal") {
@@ -81,7 +94,6 @@ con_mln <- function(
     colnames(df)[colnames(df) == "TaxonID"] <- "FeatureID"
     df$TaxonID <- df$FeatureID
     write.csv(df, processed_contrib_file, row.names = FALSE)
-    # Universal format already has taxonomy info in the file, so we pass NULL
   } else if (format == "picrust") {
     if (is.null(taxonomy_file)) stop("Taxonomy file is required for PICRUSt format.")
     contrib <- read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE)
@@ -91,7 +103,6 @@ con_mln <- function(
     final_df <- merged[, c("SampleID", "PathwayID", "FeatureID", "TaxonID", "taxon_function_abun")]
     colnames(final_df)[colnames(final_df) == "PathwayID"] <- "FunctionID"
     write.csv(final_df, processed_contrib_file, row.names = FALSE)
-    # PICRUSt data is now merged, so we pass NULL to avoid double merging
   } else if (format == "humann") {
     df <- read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE, check.names = FALSE)
     sample_cols <- colnames(df)[-1]
@@ -106,12 +117,10 @@ con_mln <- function(
 
     final_df <- long_df[, c("SampleID", "FunctionID", "FeatureID", "TaxonID", "taxon_function_abun")]
     write.csv(final_df, processed_contrib_file, row.names = FALSE)
-    # HUMAnN data has taxonomy embedded, so we pass NULL
   }
 
   ppn_dir <- file.path(output_dir, "ppn_output")
 
-  # --- PPN Layer Calculation ---
   ppn_results <- con_ppn_int(
     gene_abun_file = gene_abun_file,
     metadata_file = metadata_file,
@@ -140,26 +149,21 @@ con_mln <- function(
 
     message("\nProcessing integration for: ", basename(curr_gsea))
 
-    # --- MPN Layer Calculation ---
     mpn_dir <- file.path(output_dir, "mpn_output")
     mpn_files <- con_mpn_int(
       path_con_file = processed_contrib_file,
       metadata_file = metadata_file,
-      taxonomy_file = taxonomy_file_to_pass, # Always NULL for Humann/Universal
+      taxonomy_file = taxonomy_file_to_pass, 
       output_dir = mpn_dir,
       mpn_filtering = mpn_filtering
     )
 
-    # SAFETY CHECK: If MPN generation failed (e.g., no stratified data), skip or warn
     if (length(mpn_files) == 0) {
       warning("MPN layer could not be generated (no matching data). Skipping network integration for this comparison.")
       next
     }
-
-    # Select the first MPN file (or adapt logic to match classes if needed)
     curr_mpn <- mpn_files[1]
 
-    # --- PMN Layer Calculation ---
     pmn_dir <- file.path(output_dir, "pmn_output")
     pmn_files <- con_pmn_int(
       path_abun_file = path_abun_file,
@@ -174,12 +178,8 @@ con_mln <- function(
       pmn_q_value_cutoff = pmn_q_value_cutoff,
       pmn_p_adjust_method = pmn_p_adjust_method
     )
-
-    # Handle case where no correlations found
     curr_pmn <- if (length(pmn_files) > 0) pmn_files[1] else NULL
 
-    # --- Final Integration (MLN) ---
-    # Double check that curr_mpn is valid before reading
     if (is.na(curr_mpn) || !file.exists(curr_mpn)) {
       warning("MPN file invalid. Skipping.")
       next
@@ -191,7 +191,15 @@ con_mln <- function(
       mpn_file = curr_mpn,
       ppn_file = curr_jaccard,
       pmn_file = curr_pmn,
-      output_dir = mln_dir
+      output_dir = mln_dir,
+      visualize = visualize,
+      layout_method = layout_method,
+      node_colors = node_colors,
+      node_shapes = node_shapes,
+      base_node_size = base_node_size,
+      plot_width = plot_width,
+      plot_height = plot_height,
+      plot_dpi = plot_dpi
     )
     final_networks <- c(final_networks, final_net)
   }
