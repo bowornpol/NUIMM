@@ -1,8 +1,8 @@
-#' Internal MLN Integration & Interactive Visualization Helper
+#' High-Tech Multi-Omics Network Visualization
 #' @keywords internal
 utils::globalVariables(c("type", "weight", "name", "edge_score", "layer"))
 
-# --- Helper Function to Clean Microbial Taxonomy ---
+# --- Futuristic Taxonomy Cleaner ---
 clean_taxonomy <- function(tax_string) {
   if (grepl("g__", tax_string)) {
     parts <- unlist(strsplit(tax_string, ";\\s*|;"))
@@ -23,6 +23,7 @@ con_mln_int <- function(
 ) {
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
+  # Data Ingestion
   mpn <- read_input_file(mpn_file, file_type = "csv", stringsAsFactors = FALSE)
   ppn <- if (!is.na(ppn_file) && file.exists(ppn_file)) read_input_file(ppn_file, file_type = "csv") else NULL
   pmn <- if (!is.null(pmn_file) && file.exists(pmn_file)) read_input_file(pmn_file, file_type = "csv", stringsAsFactors = FALSE) else NULL
@@ -31,21 +32,17 @@ con_mln_int <- function(
   valid_paths <- gsea$ID
   edges <- data.frame()
 
+  # Build Edge Logic
   mpn <- mpn[mpn$FunctionID %in% valid_paths, ]
   if (nrow(mpn) > 0) edges <- rbind(edges, data.frame(Feature1 = mpn$TaxonID, Feature2 = mpn$FunctionID, edge_score = mpn$relative_contribution, edge_type = "Microbe-Pathway"))
-
   if (!is.null(ppn)) {
     ppn <- ppn[ppn$FunctionID_1 %in% valid_paths & ppn$FunctionID_2 %in% valid_paths, ]
     if (nrow(ppn) > 0) edges <- rbind(edges, data.frame(Feature1 = ppn$FunctionID_1, Feature2 = ppn$FunctionID_2, edge_score = ppn$jaccard_index, edge_type = "Pathway-Pathway"))
   }
-
   if (!is.null(pmn)) {
     pmn <- pmn[pmn$FunctionID %in% valid_paths, ]
     if (nrow(pmn) > 0) edges <- rbind(edges, data.frame(Feature1 = pmn$FunctionID, Feature2 = pmn$MetaboliteID, edge_score = abs(pmn$correlation), edge_type = "Pathway-Metabolite"))
   }
-
-  out_path <- file.path(output_dir, paste0("final_mln_", basename(gsea_file)))
-  write.csv(edges, out_path, row.names = FALSE)
 
   if (nrow(edges) > 0) {
     library(igraph)
@@ -57,7 +54,7 @@ con_mln_int <- function(
     if (visualize) {
       tryCatch(
         {
-          # 1. Node data preparation
+          # 1. Advanced Node Prep
           nodes_df <- data.frame(
             id = igraph::V(g)$name,
             label = unname(sapply(igraph::V(g)$name, function(x) {
@@ -71,11 +68,9 @@ con_mln_int <- function(
             stringsAsFactors = FALSE
           )
 
-          # 2. CALCULATION FOR TRI-CIRCLE LAYOUT
-          # Manually setting offsets: Left (-600), Center (0), Right (600)
+          # 2. Smart Spacing & Alignment Logic
           types <- c("Microbe", "Pathway", "Metabolite")
-          x_offsets <- c(-600, 0, 600)
-
+          x_pos <- c(-700, 0, 700)
           nodes_df$x <- 0
           nodes_df$y <- 0
 
@@ -83,48 +78,64 @@ con_mln_int <- function(
             idx <- which(nodes_df$group == types[i])
             n <- length(idx)
             if (n > 0) {
-              angle <- seq(0, 2 * pi, length.out = n + 1)[1:n]
-              radius <- 180 + (n * 1.5)
-              nodes_df$x[idx] <- x_offsets[i] + radius * cos(angle)
-              nodes_df$y[idx] <- radius * sin(angle)
+              # Distribute nodes vertically with random jitter to prevent perfect lines and overlaps
+              nodes_df$x[idx] <- x_pos[i] + runif(n, -50, 50)
+              nodes_df$y[idx] <- seq(-400, 400, length.out = n)
             }
           }
 
-          # Styling for White Background
+          # Cinematic Aesthetic Mapping
           nodes_df$shape <- c("Microbe" = "hexagon", "Pathway" = "dot", "Metabolite" = "diamond")[nodes_df$group]
-          nodes_df$color <- c("Microbe" = "#0ea5e9", "Pathway" = "#8b5cf6", "Metabolite" = "#f59e0b")[nodes_df$group]
+          nodes_df$color <- c("Microbe" = "#00d2ff", "Pathway" = "#9d50bb", "Metabolite" = "#f2994a")[nodes_df$group]
+          nodes_df$shadow <- TRUE
 
           edges_df <- data.frame(from = edges$Feature1, to = edges$Feature2, value = edges$edge_score)
 
-          # 3. Build Simplified Plot with Right-Side Legend
+          # 3. High-Tech UI Implementation
           vis_plot <- visNetwork::visNetwork(nodes_df, edges_df, width = "100%", height = "100vh") |>
             visNetwork::visNodes(
-              font = list(color = "#1e293b", size = 18, face = "sans-serif"),
-              shadow = list(enabled = TRUE, color = "rgba(0,0,0,0.1)", size = 10)
+              font = list(color = "#2c3e50", size = 20, face = "Orbitron, sans-serif", background = "rgba(255,255,255,0.7)"),
+              borderWidth = 2,
+              borderWidthSelected = 6,
+              scaling = list(min = 20, max = 50)
             ) |>
             visNetwork::visEdges(
-              smooth = list(enabled = TRUE, type = "curvedCW", roundness = 0.2),
-              color = list(color = "rgba(180, 180, 180, 0.4)", highlight = "#e11d48")
+              smooth = list(enabled = TRUE, type = "diagonalCross"),
+              color = list(color = "rgba(44, 62, 80, 0.15)", highlight = "#ff0000", hover = "#ff0000"),
+              width = 2
             ) |>
-            # Define Groups for the Legend
-            visNetwork::visGroups(groupname = "Microbe", color = "#0ea5e9", shape = "hexagon") |>
-            visNetwork::visGroups(groupname = "Pathway", color = "#8b5cf6", shape = "dot") |>
-            visNetwork::visGroups(groupname = "Metabolite", color = "#f59e0b", shape = "diamond") |>
-            visNetwork::visLegend(main = "Node Key", position = "right", width = 0.1) |>
             visNetwork::visInteraction(
-              dragNodes = TRUE, dragView = TRUE, zoomView = TRUE, multiselect = TRUE, navigationButtons = TRUE
+              dragNodes = TRUE, dragView = TRUE, zoomView = TRUE,
+              multiselect = TRUE, navigationButtons = TRUE, hover = TRUE
             ) |>
-            visNetwork::visPhysics(enabled = FALSE) |>
+            # SMART COLLISION AVOIDANCE ENGINE
+            visNetwork::visPhysics(
+              enabled = TRUE,
+              solver = "barnesHut",
+              barnesHut = list(
+                gravitationalConstant = -8000,
+                centralGravity = 0.3,
+                springLength = 150,
+                springConstant = 0.05,
+                avoidOverlap = 1 # CRITICAL: Anti-overlap setting
+              ),
+              stabilization = list(iterations = 200)
+            ) |>
+            # FULL CUSTOMIZATION SYSTEM (Left Panel)
+            visNetwork::visConfigure(
+              enabled = TRUE,
+              filter = c("nodes", "edges", "physics"),
+              showButton = FALSE
+            ) |>
             visNetwork::visExport(
-              type = "png", label = "📸 Save Layout",
-              style = "position:absolute; left:30px; bottom:30px; background:#1e293b; color:white; padding:15px 25px; border-radius:12px; border:none; cursor:pointer; font-weight:bold; font-family:sans-serif; box-shadow: 0 4px 10px rgba(0,0,0,0.2); z-index:1001;"
+              type = "png", label = "💾 SAVE NETWORK",
+              style = "position:absolute; left:20px; bottom:80px; background:linear-gradient(45deg, #2c3e50, #000000); color:#00d2ff; padding:15px 25px; border-radius:5px; border:1px solid #00d2ff; cursor:pointer; font-family:monospace; font-weight:bold; letter-spacing:2px; box-shadow: 0 0 15px rgba(0,210,255,0.4);"
             )
 
-          vis_plot$x$background <- "#ffffff"
+          vis_plot$x$background <- "#ffffff" # Default clean futuristic white
 
           html_path <- file.path(output_dir, paste0("interactive_mln_", tools::file_path_sans_ext(basename(gsea_file)), ".html"))
           htmlwidgets::saveWidget(vis_plot, file = html_path, selfcontained = TRUE, background = "#ffffff")
-          message("Successfully generated clean Tri-Cluster network at: ", html_path)
         },
         error = function(e) warning("Visualization failed: ", e$message)
       )
