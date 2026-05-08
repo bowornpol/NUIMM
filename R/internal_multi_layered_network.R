@@ -1,4 +1,4 @@
-#' High-Tech Multi-Omics Network Visualization Helper (Fixed Layout)
+#' High-Tech Multi-Omics Network Visualization Helper (Triple Circle Layout)
 #' @keywords internal
 utils::globalVariables(c("type", "weight", "name", "edge_score", "layer"))
 
@@ -7,12 +7,10 @@ clean_taxonomy <- function(tax_string) {
   if (is.na(tax_string) || tax_string == "") {
     return(tax_string)
   }
-
   if (grepl("g__", tax_string)) {
     parts <- unlist(strsplit(tax_string, ";\\s*|;"))
     g_part <- parts[grepl("^g__", parts)][1]
     s_part <- parts[grepl("^s__", parts)][1]
-
     if (!is.na(s_part) && nchar(s_part) > 3) {
       return(paste(g_part, s_part, sep = " "))
     } else if (!is.na(g_part)) {
@@ -78,34 +76,39 @@ con_mln_int <- function(
             stringsAsFactors = FALSE
           )
 
-          # STRICT MATHEMATICAL PLACEMENT
+          # STRICT MATHEMATICAL PLACEMENT: DYNAMIC ANTI-OVERLAP SPACING
           nodes_df$x <- 0
           nodes_df$y <- 0
 
-          for (grp in c("Microbe", "Pathway", "Metabolite")) {
-            idx <- which(nodes_df$group == grp)
-            if (length(idx) == 0) next
+          idx_mic <- which(nodes_df$group == "Microbe")
+          idx_path <- which(nodes_df$group == "Pathway")
+          idx_met <- which(nodes_df$group == "Metabolite")
 
-            if (grp == "Microbe") {
-              # ALL MICROBES IN ONE GIANT CIRCLE AT THE TOP
-              n_mic <- length(idx)
-              ang <- seq(0, 2 * pi, length.out = n_mic + 1)[1:n_mic]
-              rad <- 400 + (n_mic * 15) # Automatically scales up so nodes never overlap
-              nodes_df$x[idx] <- rad * cos(ang)
-              nodes_df$y[idx] <- -800 + rad * sin(ang)
-            } else if (grp == "Pathway") {
-              # PATHWAYS IN A ROW IN THE MIDDLE
-              n_grp <- length(idx)
-              x_offs <- seq(-1200, 1200, length.out = max(1, n_grp))
-              nodes_df$x[idx] <- x_offs
-              nodes_df$y[idx] <- 0
-            } else if (grp == "Metabolite") {
-              # METABOLITES IN A ROW AT THE BOTTOM
-              n_grp <- length(idx)
-              x_offs <- seq(-600, 600, length.out = max(1, n_grp))
-              nodes_df$x[idx] <- x_offs
-              nodes_df$y[idx] <- 600
-            }
+          # 1. Calculate required radii so nodes never crowd each other
+          r_mic <- 200 + (length(idx_mic) * 15)
+          r_path <- 150 + (length(idx_path) * 20)
+          r_met <- 100 + (length(idx_met) * 25)
+
+          # 2. Calculate safe Y-Centers so circles NEVER touch (500px gap minimum)
+          y_mic <- -(r_mic + r_path + 500)
+          y_path <- 0
+          y_met <- (r_path + r_met + 500)
+
+          # 3. Apply coordinates
+          if (length(idx_mic) > 0) {
+            ang <- seq(0, 2 * pi, length.out = length(idx_mic) + 1)[1:length(idx_mic)]
+            nodes_df$x[idx_mic] <- r_mic * cos(ang)
+            nodes_df$y[idx_mic] <- y_mic + r_mic * sin(ang)
+          }
+          if (length(idx_path) > 0) {
+            ang <- seq(0, 2 * pi, length.out = length(idx_path) + 1)[1:length(idx_path)]
+            nodes_df$x[idx_path] <- r_path * cos(ang)
+            nodes_df$y[idx_path] <- y_path + r_path * sin(ang)
+          }
+          if (length(idx_met) > 0) {
+            ang <- seq(0, 2 * pi, length.out = length(idx_met) + 1)[1:length(idx_met)]
+            nodes_df$x[idx_met] <- r_met * cos(ang)
+            nodes_df$y[idx_met] <- y_met + r_met * sin(ang)
           }
 
           # Shapes and Colors
@@ -114,26 +117,24 @@ con_mln_int <- function(
 
           # Render Network
           vis_plot <- visNetwork(nodes_df, edges, width = "100%", height = "100vh") |>
-            # font background highlights text so edges don't ruin readability
             visNodes(font = list(color = "#0f172a", size = 18, face = "sans-serif", background = "rgba(255,255,255,0.85)"), borderWidth = 1.5, shadow = TRUE) |>
-            # Straight lines
             visEdges(smooth = FALSE, color = list(color = "rgba(180, 180, 180, 0.4)", highlight = "#e11d48"), width = 1) |>
             visGroups(groupname = "Microbe", color = list(background = "#9AA374", border = "#7A825C", highlight = "#B4BE89"), shape = "triangle") |>
             visGroups(groupname = "Pathway", color = list(background = "#C1ABAD", border = "#9A898A", highlight = "#D8C5C7"), shape = "dot") |>
             visGroups(groupname = "Metabolite", color = list(background = "#4E7286", border = "#3A5565", highlight = "#6392AB"), shape = "square") |>
             visLegend(useGroups = TRUE, position = "right", width = 0.1) |>
             visInteraction(navigationButtons = FALSE, dragNodes = TRUE, multiselect = TRUE, hover = TRUE) |>
-            # No Physics
+            # NO PHYSICS - Locks the perfectly calculated circles in place
             visPhysics(enabled = FALSE) |>
-            # BULLETPROOF LIGHT GREY SAVE BUTTON
+            # SIMPLE, SAFE SAVE BUTTON (Top Right)
             visExport(
               type = "png", label = "Save Network",
-              style = "position: absolute; right: 20px; top: 20px; background-color: #e2e8f0; color: #334155; padding: 10px 20px; border: 1px solid #cbd5e1; border-radius: 6px; cursor: pointer; font-weight: bold; font-family: sans-serif; z-index: 9999 !important; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);"
+              style = "position: absolute; right: 20px; top: 20px; background-color: #e2e8f0; color: #334155; padding: 10px 20px; border: 1px solid #cbd5e1; border-radius: 6px; cursor: pointer; font-weight: bold; font-family: sans-serif; box-shadow: 0px 4px 6px rgba(0,0,0,0.1);"
             )
 
           vis_plot$x$background <- "#ffffff"
           saveWidget(vis_plot, file = out_html, selfcontained = TRUE)
-          message("✅ Top-Down HTML successfully built: ", out_html)
+          message("✅ Triple-Circle HTML successfully built: ", out_html)
         },
         error = function(e) {
           message("❌ Visualization failed: ", e$message)
