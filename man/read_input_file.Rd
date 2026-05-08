@@ -11,7 +11,7 @@ read_input_file(file_path, file_type = c("csv", "tsv"), ...)
 
 \item{file_type}{A character string indicating the file type ("csv" or "tsv").}
 
-\item{...}{Additional arguments to pass to `data.table::fread`.}
+\item{...}{Additional arguments to pass to the reader.}
 }
 \value{
 A data frame containing the data from the specified file.
@@ -21,6 +21,6 @@ Internal helper function to read CSV or TSV files
 }
 \details{
 Uses high-performance `data.table::fread` to read massive omics datasets
-significantly faster than base R, returning a standard data.frame.
+significantly faster than base R, handling row.names safely.
 }
 \keyword{internal}
