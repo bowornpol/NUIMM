@@ -1,4 +1,9 @@
 #' Internal Microbe-Pathway Network Helper
+#'
+#' @details
+#' Connects Microbes to Pathways by calculating the relative contribution of taxa
+#' to functions and applying user-defined filters to retain significant connections.
+#'
 #' @keywords internal
 utils::globalVariables(c("relative_contribution", "FunctionID", "taxon_function_abun", "total_abun", "TaxonID"))
 
@@ -7,11 +12,12 @@ con_mpn_int <- function(
   mpn_filtering = "top10%"
 ) {
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
-  if (!requireNamespace("data.table", quietly = TRUE)) stop("Install 'data.table'.")
 
+  # Read Data
   contrib <- read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE)
   meta <- read_input_file(metadata_file, file_type = "csv", stringsAsFactors = FALSE)
 
+  # Merge Metadata
   merged <- merge(contrib, meta, by = "SampleID")
 
   if (!is.null(taxonomy_file)) {
@@ -26,30 +32,40 @@ con_mpn_int <- function(
     sub_df <- merged[merged$class == cls, ]
     if (nrow(sub_df) == 0) next
 
-    dt <- data.table::as.data.table(sub_df)
+    # BULLETPROOF MATH using dplyr
+    res <- sub_df |>
+      dplyr::group_by(FunctionID, TaxonID) |>
+      dplyr::summarise(taxon_function_abun = sum(taxon_function_abun), .groups = "drop") |>
+      dplyr::group_by(FunctionID) |>
+      dplyr::mutate(total_abun = sum(taxon_function_abun)) |>
+      dplyr::mutate(relative_contribution = ifelse(total_abun == 0, 0, taxon_function_abun / total_abun)) |>
+      dplyr::ungroup() |>
+      as.data.frame()
 
-    # FIX: Swapped .() for list() here as well
-    res <- dt[, list(taxon_function_abun = sum(taxon_function_abun)), by = list(FunctionID, TaxonID)]
-    res[, total_abun := sum(taxon_function_abun), by = FunctionID]
-    res[, relative_contribution := data.table::fifelse(total_abun == 0, 0, taxon_function_abun / total_abun)]
-
+    # Filtering Logic
     if (mpn_filtering != "unfiltered") {
       if (mpn_filtering %in% c("mean", "median")) {
         FUN_used <- if (mpn_filtering == "mean") mean else median
-        res[, threshold := FUN_used(relative_contribution), by = FunctionID]
-        res <- res[relative_contribution >= threshold]
-        res[, threshold := NULL]
+
+        thresh <- aggregate(relative_contribution ~ FunctionID, res, FUN_used)
+        colnames(thresh)[2] <- "threshold"
+        res <- merge(res, thresh, by = "FunctionID")
+        res <- res[res$relative_contribution >= res$threshold, ]
+        res$threshold <- NULL
       } else if (grepl("top", mpn_filtering)) {
         perc <- as.numeric(gsub("top|%", "", mpn_filtering)) / 100
-        res <- res[order(FunctionID, -relative_contribution)]
-        res <- res[, .SD[1:max(1, round(.N * perc))], by = FunctionID]
+        res <- res |>
+          dplyr::group_by(FunctionID) |>
+          dplyr::arrange(dplyr::desc(relative_contribution)) |>
+          dplyr::slice_head(prop = perc) |>
+          dplyr::ungroup() |>
+          as.data.frame()
       }
     }
 
-    res_df <- as.data.frame(res)
-    if (nrow(res_df) > 0) {
+    if (nrow(res) > 0) {
       fname <- file.path(output_dir, paste0("mpn_", cls, ".csv"))
-      write.csv(res_df, fname, row.names = FALSE)
+      write.csv(res, fname, row.names = FALSE)
       output_paths <- c(output_paths, fname)
     }
   }
