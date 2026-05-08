@@ -8,7 +8,6 @@ clean_taxonomy <- function(tax_string) {
     parts <- unlist(strsplit(tax_string, ";\\s*|;"))
     g_part <- parts[grepl("^g__", parts)][1]
     s_part <- parts[grepl("^s__", parts)][1]
-
     if (!is.na(s_part) && nchar(s_part) > 3) {
       return(paste(g_part, s_part, sep = " "))
     } else if (!is.na(g_part)) {
@@ -24,7 +23,7 @@ con_mln_int <- function(
 ) {
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-  # --- FIX: Define out_path immediately so it is never 'not found' ---
+  # Ensure path is defined early to prevent 'out_path not found' error
   out_path <- file.path(output_dir, paste0("final_mln_data_", basename(gsea_file)))
 
   mpn <- read_input_file(mpn_file, file_type = "csv", stringsAsFactors = FALSE)
@@ -35,35 +34,27 @@ con_mln_int <- function(
   valid_paths <- gsea$ID
   edges <- data.frame()
 
-  # Microbe-Pathway
   mpn <- mpn[mpn$FunctionID %in% valid_paths, ]
   if (nrow(mpn) > 0) edges <- rbind(edges, data.frame(Feature1 = mpn$TaxonID, Feature2 = mpn$FunctionID, edge_score = mpn$relative_contribution, edge_type = "Microbe-Pathway"))
 
-  # Pathway-Pathway
   if (!is.null(ppn)) {
     ppn <- ppn[ppn$FunctionID_1 %in% valid_paths & ppn$FunctionID_2 %in% valid_paths, ]
     if (nrow(ppn) > 0) edges <- rbind(edges, data.frame(Feature1 = ppn$FunctionID_1, Feature2 = ppn$FunctionID_2, edge_score = ppn$jaccard_index, edge_type = "Pathway-Pathway"))
   }
 
-  # Pathway-Metabolite
   if (!is.null(pmn)) {
     pmn <- pmn[pmn$FunctionID %in% valid_paths, ]
     if (nrow(pmn) > 0) edges <- rbind(edges, data.frame(Feature1 = pmn$FunctionID, Feature2 = pmn$MetaboliteID, edge_score = abs(pmn$correlation), edge_type = "Pathway-Metabolite"))
   }
 
-  # Save the raw edge data
   if (nrow(edges) > 0) {
     write.csv(edges, out_path, row.names = FALSE)
-
     library(igraph)
     g <- igraph::graph_from_data_frame(edges, directed = FALSE)
 
     igraph::V(g)$type <- ifelse(igraph::V(g)$name %in% edges$Feature1[edges$edge_type == "Microbe-Pathway"], "Microbe",
       ifelse(igraph::V(g)$name %in% edges$Feature2[edges$edge_type == "Pathway-Metabolite"], "Metabolite", "Pathway")
     )
-
-    # Save GraphML for Cytoscape
-    igraph::write_graph(g, file.path(output_dir, paste0("network_architecture_", tools::file_path_sans_ext(basename(gsea_file)), ".graphml")), format = "graphml")
 
     if (visualize) {
       tryCatch(
@@ -82,46 +73,59 @@ con_mln_int <- function(
             id = igraph::V(g)$name,
             label = unname(node_names_clean),
             group = igraph::V(g)$type,
-            # Strict level mapping for column layout
-            level = ifelse(igraph::V(g)$type == "Microbe", 1, ifelse(igraph::V(g)$type == "Pathway", 2, 3)),
             title = paste0("<div style='padding:8px; font-family:sans-serif;'><b>ID:</b> ", igraph::V(g)$name, "</div>"),
             stringsAsFactors = FALSE
           )
 
-          # Advanced Colors & Shapes
+          # Initialize Coordinates for 3-Zone Cluster
+          types <- c("Microbe", "Pathway", "Metabolite")
+          x_offsets <- c(-700, 0, 700)
+          nodes_df$x <- 0
+          nodes_df$y <- 0
+          for (i in 1:3) {
+            idx <- which(nodes_df$group == types[i])
+            if (length(idx) > 0) {
+              nodes_df$x[idx] <- x_offsets[i] + runif(length(idx), -50, 50)
+              nodes_df$y[idx] <- seq(-400, 400, length.out = length(idx))
+            }
+          }
+
           nodes_df$shape <- c("Microbe" = "hexagon", "Pathway" = "dot", "Metabolite" = "diamond")[nodes_df$group]
           nodes_df$color <- c("Microbe" = "#0ea5e9", "Pathway" = "#8b5cf6", "Metabolite" = "#f59e0b")[nodes_df$group]
 
           edges_df <- data.frame(from = edges$Feature1, to = edges$Feature2, value = edges$edge_score)
 
-          # 3. Build Futuristic Plot
+          # 3. Build Plot
           vis_plot <- visNetwork::visNetwork(nodes_df, edges_df, width = "100%", height = "100vh") |>
             visNetwork::visNodes(
-              font = list(color = "#1e293b", size = 20, face = "sans-serif", background = "rgba(255,255,255,0.7)"),
-              borderWidth = 1.5,
-              shadow = list(enabled = TRUE, color = "rgba(0,0,0,0.1)")
+              font = list(color = "#1e293b", size = 18, background = "rgba(255,255,255,0.7)"),
+              borderWidth = 1.5, shadow = list(enabled = TRUE)
             ) |>
             visNetwork::visEdges(
-              smooth = list(enabled = TRUE, type = "diagonalCross"),
+              smooth = list(enabled = TRUE, type = "continuous"),
               color = list(color = "rgba(148, 163, 184, 0.4)", highlight = "#e11d48")
             ) |>
-            visNetwork::visHierarchicalLayout(
-              direction = "LR", # Left to Right for your columns
-              levelSeparation = 400, # Wide space between Microbe, Pathway, Metabolite
-              nodeSpacing = 100, # Space to prevent overlap within columns
-              sortMethod = "directed"
-            ) |>
             visNetwork::visInteraction(
-              navigationButtons = TRUE,
-              dragNodes = TRUE,
-              multiselect = TRUE,
-              hover = TRUE
+              navigationButtons = TRUE, dragNodes = TRUE, multiselect = TRUE, hover = TRUE
             ) |>
-            visNetwork::visPhysics(enabled = FALSE) |>
+            # ADVANCED PHYSICS FOR PRACTICAL USE (ANTI-OVERLAP)
+            visNetwork::visPhysics(
+              enabled = TRUE,
+              solver = "forceAtlas2Based",
+              forceAtlas2Based = list(
+                gravitationalConstant = -150,
+                centralGravity = 0.01,
+                springLength = 100,
+                springConstant = 0.08,
+                avoidOverlap = 1 # THIS STOPS NODES FROM OVERLAPPING
+              ),
+              stabilization = list(enabled = TRUE, iterations = 200)
+            ) |>
             visNetwork::visExport(
               type = "png", label = "💾 SAVE NETWORK",
-              style = "position:absolute; left:20px; bottom:40px; background:#0f172a; color:#0ea5e9; padding:15px 25px; border-radius:8px; border:1px solid #0ea5e9; cursor:pointer; font-weight:bold; font-family:sans-serif; z-index:1000;"
-            )
+              style = "position:absolute; left:20px; bottom:40px; background:#1e293b; color:white; padding:12px 20px; border-radius:8px; border:none; cursor:pointer; font-weight:bold; z-index:1000;"
+            ) |>
+            visNetwork::visConfigure(enabled = TRUE, filter = c("physics", "layout"))
 
           vis_plot$x$background <- "#ffffff"
 
