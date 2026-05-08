@@ -39,7 +39,7 @@ con_pmn_int(
 
 \item{pmn_q_value_cutoff}{Numeric q-value cutoff.}
 
-\item{pmn_p_adjust_method}{P-adj options: "fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none".}
+\item{pmn_p_adjust_method}{P-adj options: "fdr", "holm", "hochberg", etc.}
 }
 \value{
 Vector of PMN file paths.
@@ -48,7 +48,7 @@ Vector of PMN file paths.
 Internal Pathway-Metabolite Network Helper
 }
 \details{
-Connects Pathways to Metabolites by calculating pairwise correlations between 
-GSEA-significant pathways and metabolites, filtering results by significance.
+Connects Pathways to Metabolites using vectorized, high-performance matrix
+correlation instead of nested loops.
 }
 \keyword{internal}

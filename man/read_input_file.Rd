@@ -9,18 +9,18 @@ read_input_file(file_path, file_type = c("csv", "tsv"), ...)
 \arguments{
 \item{file_path}{A character string specifying the path to the input file.}
 
-\item{file_type}{A character string indicating the file type. Must be either
-"csv" (for comma-separated values) or "tsv" (for tab-separated values).}
+\item{file_type}{A character string indicating the file type ("csv" or "tsv").}
 
-\item{...}{Additional arguments to pass to `read.csv` or `read.delim`
-(e.g., `header`, `row.names`, `stringsAsFactors`).}
+\item{...}{Additional arguments to pass to `data.table::fread`.}
 }
 \value{
 A data frame containing the data from the specified file.
 }
 \description{
-This function provides a flexible way to read data from either
-a comma-separated values (CSV) file or a tab-separated values (TSV) file.
-It acts as a wrapper around `read.csv` and `read.delim` from base R.
+Internal helper function to read CSV or TSV files
+}
+\details{
+Uses high-performance `data.table::fread` to read massive omics datasets
+significantly faster than base R, returning a standard data.frame.
 }
 \keyword{internal}
