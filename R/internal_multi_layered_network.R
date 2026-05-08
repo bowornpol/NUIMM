@@ -26,7 +26,6 @@ con_mln_int <- function(
 ) {
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-  # Define paths immediately
   base_name <- tools::file_path_sans_ext(basename(gsea_file))
   out_csv <- file.path(output_dir, paste0("final_mln_data_", base_name, ".csv"))
   out_html <- file.path(output_dir, paste0("interactive_mln_", base_name, ".html"))
@@ -39,7 +38,7 @@ con_mln_int <- function(
   valid_paths <- gsea$ID
   edges <- data.frame()
 
-  # Building Edges
+  # Build Edges
   mpn <- mpn[mpn$FunctionID %in% valid_paths, ]
   if (nrow(mpn) > 0) edges <- rbind(edges, data.frame(Feature1 = mpn$TaxonID, Feature2 = mpn$FunctionID, edge_score = mpn$relative_contribution, edge_type = "Microbe-Pathway"))
   if (!is.null(ppn)) {
@@ -64,13 +63,12 @@ con_mln_int <- function(
     if (visualize) {
       tryCatch(
         {
-          # Node Prep with Family extraction
           tax_info <- lapply(V(g)$name, function(x) if (V(g)$type[V(g)$name == x] == "Microbe") clean_and_get_family(x) else list(clean = x, family = "NA"))
           nodes_df <- data.frame(id = V(g)$name, label = sapply(tax_info, function(x) x$clean), family = sapply(tax_info, function(x) x$family), group = V(g)$type, stringsAsFactors = FALSE)
 
           # 3-Zone Layout Logic
           types <- c("Microbe", "Pathway", "Metabolite")
-          x_zones <- c(-850, 0, 850)
+          x_zones <- c(-1200, 0, 1200)
           nodes_df$x <- 0
           nodes_df$y <- 0
           for (i in 1:3) {
@@ -78,29 +76,28 @@ con_mln_int <- function(
             if (length(idx) > 0) {
               if (types[i] == "Microbe") {
                 fams <- unique(nodes_df$family[idx])
-                y_offs <- seq(-500, 500, length.out = length(fams))
+                y_offs <- seq(-800, 800, length.out = length(fams))
                 for (j in seq_along(fams)) {
                   f_idx <- which(nodes_df$id %in% nodes_df$id[idx][nodes_df$family[idx] == fams[j]])
                   ang <- seq(0, 2 * pi, length.out = length(f_idx) + 1)[1:length(f_idx)]
-                  rad <- 90 + (length(f_idx) * 4)
+                  rad <- 150 + (length(f_idx) * 5)
                   nodes_df$x[f_idx] <- x_zones[i] + rad * cos(ang)
                   nodes_df$y[f_idx] <- y_offs[j] + rad * sin(ang)
                 }
               } else {
                 ang <- seq(0, 2 * pi, length.out = length(idx) + 1)[1:length(idx)]
-                rad <- 250 + (length(idx) * 2.5)
+                rad <- 300 + (length(idx) * 3)
                 nodes_df$x[idx] <- x_zones[i] + rad * cos(ang)
                 nodes_df$y[idx] <- rad * sin(ang)
               }
             }
           }
 
-          # Styling with User Colors
+          # Styling
           nodes_df$shape <- c("Microbe" = "hexagon", "Pathway" = "dot", "Metabolite" = "diamond")[nodes_df$group]
           nodes_df$color <- c("Microbe" = "#9AA374", "Pathway" = "#C1ABAD", "Metabolite" = "#4E7286")[nodes_df$group]
           edges_df <- data.frame(from = edges$Feature1, to = edges$Feature2, value = edges$edge_score)
 
-          # Plot Construction
           vis_plot <- visNetwork(nodes_df, edges_df,
             width = "100%", height = "100vh",
             main = list(
@@ -117,14 +114,13 @@ con_mln_int <- function(
             visInteraction(navigationButtons = FALSE, dragNodes = TRUE, multiselect = TRUE, hover = TRUE) |>
             visPhysics(
               enabled = TRUE, solver = "forceAtlas2Based",
-              forceAtlas2Based = list(avoidOverlap = 1, springConstant = 0.08, centralGravity = 0.005)
+              forceAtlas2Based = list(gravitationalConstant = -10000, avoidOverlap = 1, springConstant = 0.08)
             ) |>
             visExport(
               type = "png", label = "💾 SAVE NETWORK",
               style = "position:absolute; right:30px; top:30px; background:#f1f5f9; color:#475569; padding:12px 24px; border-radius:10px; border:1px solid #cbd5e1; cursor:pointer; font-weight:bold; font-family:sans-serif; z-index:1000;"
             )
 
-          # Save HTML
           saveWidget(vis_plot, file = out_html, selfcontained = TRUE)
           message("✅ HTML saved to: ", out_html)
         },
