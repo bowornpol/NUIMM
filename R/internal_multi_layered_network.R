@@ -2,6 +2,25 @@
 #' @keywords internal
 utils::globalVariables(c("type", "weight", "name", "edge_score", "layer"))
 
+# --- Helper Function to Clean Microbial Taxonomy ---
+clean_taxonomy <- function(tax_string) {
+  if (grepl("g__", tax_string)) {
+    # Split by semicolon (with or without spaces)
+    parts <- unlist(strsplit(tax_string, ";\\s*|;"))
+
+    g_part <- parts[grepl("^g__", parts)][1]
+    s_part <- parts[grepl("^s__", parts)][1]
+
+    # Check if species exists and is actually named (longer than just "s__")
+    if (!is.na(s_part) && nchar(s_part) > 3) {
+      return(paste(g_part, s_part, sep = " "))
+    } else if (!is.na(g_part)) {
+      return(g_part)
+    }
+  }
+  return(tax_string) # Return original if it doesn't match expected taxonomy pattern
+}
+
 con_mln_int <- function(
   gsea_file, mpn_file, ppn_file, pmn_file, output_dir,
   visualize, layout_method, node_colors, node_shapes, base_node_size, plot_width, plot_height, plot_dpi
@@ -39,9 +58,10 @@ con_mln_int <- function(
     igraph::V(g)$type <- ifelse(igraph::V(g)$name %in% edges$Feature1[edges$edge_type == "Microbe-Pathway"], "Microbe",
       ifelse(igraph::V(g)$name %in% edges$Feature2[edges$edge_type == "Pathway-Metabolite"], "Metabolite", "Pathway")
     )
+
+    # Strict Biological Layering
     igraph::V(g)$layer <- ifelse(igraph::V(g)$type == "Microbe", 1, ifelse(igraph::V(g)$type == "Pathway", 2, 3))
 
-    # --- ADJUSTMENT: Always export GraphML for large-scale external visualization (Cytoscape/Gephi)
     igraph::write_graph(g, file.path(output_dir, paste0("final_mln_", tools::file_path_sans_ext(basename(gsea_file)), ".graphml")), format = "graphml")
 
     if (visualize) {
@@ -50,63 +70,92 @@ con_mln_int <- function(
           if (!requireNamespace("visNetwork", quietly = TRUE) || !requireNamespace("htmlwidgets", quietly = TRUE)) {
             warning("Install 'visNetwork' and 'htmlwidgets' for interactive HTML plotting.")
           } else {
-            # --- ADJUSTMENT: Build Interactive Plot instead of static ggraph
+            # 1. Prepare Nodes & Apply Taxonomy Cleaner
+            node_names_clean <- sapply(igraph::V(g)$name, function(x) {
+              type <- igraph::V(g)$type[igraph::V(g)$name == x]
+              if (type == "Microbe") {
+                return(clean_taxonomy(x))
+              } else {
+                return(x)
+              }
+            })
+
             nodes_df <- data.frame(
               id = igraph::V(g)$name,
-              label = igraph::V(g)$name,
+              label = unname(node_names_clean), # Uses the cleaned short names
               group = igraph::V(g)$type,
-              level = igraph::V(g)$layer, # Hierarchical layering
-              title = paste0("<p><b>Type:</b> ", igraph::V(g)$type, "<br><b>ID:</b> ", igraph::V(g)$name, "</p>"), # Hover tooltip
+              level = igraph::V(g)$layer,
+              title = paste0("<div style='padding:5px; font-family:sans-serif;'><b>Type:</b> ", igraph::V(g)$type, "<br><b>ID:</b> ", igraph::V(g)$name, "</div>"),
               stringsAsFactors = FALSE
             )
 
-            shape_map <- c("Microbe" = "triangle", "Pathway" = "dot", "Metabolite" = "square")
-            nodes_df$shape <- shape_map[nodes_df$group]
+            # Custom Modern Aesthetic Map
+            shape_map <- c("Microbe" = "hexagon", "Pathway" = "dot", "Metabolite" = "diamond")
+            color_map <- c("Microbe" = "#00cec9", "Pathway" = "#6c5ce7", "Metabolite" = "#fdcb6e")
 
-            # Map colors using the user's provided palette
-            color_map <- c("Microbe" = "#D55E00", "Pathway" = "#0072B2", "Metabolite" = "#009E73")
+            nodes_df$shape <- shape_map[nodes_df$group]
             nodes_df$color <- color_map[nodes_df$group]
 
+            # 2. Prepare Edges
             edges_df <- data.frame(
               from = edges$Feature1,
               to = edges$Feature2,
-              value = edges$edge_score, # Scales edge thickness
-              title = paste0("<p><b>Score:</b> ", round(edges$edge_score, 4), "</p>"), # Hover tooltip
-              color = "rgba(200, 200, 200, 0.4)" # Semi-transparent light gray
+              value = edges$edge_score,
+              title = paste0("<div style='padding:5px; font-family:sans-serif;'><b>Edge Score:</b> ", round(edges$edge_score, 4), "</div>")
             )
 
-            # Build Plot (Dark Academic Presentation Theme)
+            # 3. Build Interactive Plot (Frozen & Beautiful)
             vis_plot <- visNetwork::visNetwork(
               nodes_df, edges_df,
               width = "100%", height = "900px",
-              main = list(text = "Multi-Layered Multi-Omics Network", style = "color: white; font-family: sans-serif;")
+              main = list(text = "Multi-Omics Mechanistic Network", style = "color: #f8fafc; font-family: sans-serif; font-weight: 400;")
             ) |>
               visNetwork::visNodes(
-                font = list(color = "white", size = 20, face = "sans-serif"),
-                borderWidth = 1.5,
-                borderWidthSelected = 4,
-                scaling = list(min = 10, max = 30)
+                font = list(color = "#cbd5e1", size = 18, face = "sans-serif"),
+                borderWidth = 2,
+                borderWidthSelected = 6,
+                scaling = list(min = 15, max = 35),
+                shadow = list(enabled = TRUE, color = "rgba(0,0,0,0.6)", size = 10, x = 3, y = 3)
               ) |>
-              visNetwork::visEdges(smooth = list(enabled = TRUE, type = "continuous")) |>
+              visNetwork::visEdges(
+                smooth = list(enabled = TRUE, type = "cubicBezier", roundness = 0.5), # Elegant curved lines
+                color = list(color = "rgba(148, 163, 184, 0.2)", highlight = "#ff7675", hover = "#ff7675"), # Lights up pink on click
+                selectionWidth = 3
+              ) |>
               visNetwork::visOptions(
-                highlightNearest = list(enabled = TRUE, degree = 1, hover = TRUE), # Highlights connected nodes on click
-                nodesIdSelection = list(enabled = TRUE, style = "width: 200px; background: #333; color: white;"), # Dropdown search
-                selectedBy = list(variable = "group", style = "width: 200px; background: #333; color: white;") # Filter by omic layer
+                highlightNearest = list(enabled = TRUE, degree = 1, hover = TRUE, hideColor = "rgba(15, 23, 42, 0.3)"),
+                nodesIdSelection = list(enabled = TRUE, style = "width: 250px; background: #334155; color: white; border: none; border-radius: 5px; padding: 5px;"),
+                selectedBy = list(variable = "group", style = "width: 250px; background: #334155; color: white; border: none; border-radius: 5px; padding: 5px;")
               ) |>
-              visNetwork::visInteraction(navigationButtons = TRUE, dragNodes = TRUE, dragView = TRUE, zoomView = TRUE) |>
-              visNetwork::visPhysics(stabilization = TRUE, barnesHut = list(gravitationalConstant = -6000, centralGravity = 0.3)) |>
-              visNetwork::visExport(type = "png", name = paste0("network_", tools::file_path_sans_ext(basename(gsea_file))), label = "Save Current View as PNG")
+              visNetwork::visInteraction(
+                navigationButtons = TRUE,
+                dragNodes = TRUE,
+                dragView = TRUE,
+                zoomView = TRUE,
+                hover = TRUE
+              ) |>
+              visNetwork::visHierarchicalLayout(
+                direction = "UD", # Up-Down orientation
+                levelSeparation = 250, # Space between Omics layers
+                nodeSpacing = 80, # Space between nodes in the same layer
+                edgeMinimization = TRUE,
+                parentCentralization = TRUE
+              ) |>
+              # THIS COMMAND KILLS THE PHYSICS JIGGLE:
+              visNetwork::visPhysics(enabled = FALSE) |>
+              visNetwork::visExport(
+                type = "png",
+                name = paste0("network_", tools::file_path_sans_ext(basename(gsea_file))),
+                label = "📥 Download High-Res PNG",
+                style = "background: #00cec9; color: #0f172a; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold;"
+              )
 
-            if (layout_method == "sugiyama") {
-              vis_plot <- vis_plot |> visNetwork::visHierarchicalLayout(direction = "UD", levelSeparation = 300, nodeSpacing = 150)
-            }
+            vis_plot$x$background <- "#0f172a" # Deep Slate Blue background
 
-            vis_plot$x$background <- "#121212"
-
-            # Save Self-Contained HTML
+            # 4. Save Self-Contained HTML
             html_path <- file.path(output_dir, paste0("interactive_mln_", tools::file_path_sans_ext(basename(gsea_file)), ".html"))
-            htmlwidgets::saveWidget(vis_plot, file = html_path, selfcontained = TRUE, background = "#121212")
-            message("  Saved Interactive HTML visualization to: ", html_path)
+            htmlwidgets::saveWidget(vis_plot, file = html_path, selfcontained = TRUE, background = "#0f172a")
+            message("  Saved Beautiful Interactive HTML visualization to: ", html_path)
           }
         },
         error = function(e) warning("Interactive visualization failed: ", e$message)
