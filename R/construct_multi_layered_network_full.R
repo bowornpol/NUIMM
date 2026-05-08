@@ -47,23 +47,20 @@ con_mln <- function(
     tax <- data.table::as.data.table(read_input_file(taxonomy_file, file_type = "csv", stringsAsFactors = FALSE))
 
     merged <- merge(contrib, tax, by = "FeatureID", all = FALSE)
-    final_df <- merged[, .(SampleID, FunctionID = PathwayID, FeatureID, TaxonID, taxon_function_abun)]
+    # FIX: Swapped .() for list()
+    final_df <- merged[, list(SampleID, FunctionID = PathwayID, FeatureID, TaxonID, taxon_function_abun)]
     data.table::fwrite(final_df, processed_contrib_file)
   } else if (format == "humann") {
     df <- data.table::as.data.table(read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE, check.names = FALSE))
     col1_name <- colnames(df)[1]
 
-    # Fast melt pivoting
     long_df <- data.table::melt(df, id.vars = col1_name, variable.name = "SampleID", value.name = "taxon_function_abun")
-
-    # Filter for stratified rows
     long_df <- long_df[grepl("\\|", get(col1_name))]
-
-    # Fast string splitting directly into columns
     long_df[, c("FunctionID", "FeatureID") := data.table::tstrsplit(get(col1_name), "\\|", keep = 1:2)]
     long_df[, TaxonID := FeatureID]
 
-    final_df <- long_df[, .(SampleID, FunctionID, FeatureID, TaxonID, taxon_function_abun)]
+    # FIX: Swapped .() for list()
+    final_df <- long_df[, list(SampleID, FunctionID, FeatureID, TaxonID, taxon_function_abun)]
     data.table::fwrite(final_df, processed_contrib_file)
   }
 

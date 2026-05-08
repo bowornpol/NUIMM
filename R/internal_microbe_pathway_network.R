@@ -1,9 +1,4 @@
 #' Internal Microbe-Pathway Network Helper
-#'
-#' @details
-#' Connects Microbes to Pathways utilizing data.table for rapid aggregation
-#' and threshold filtering.
-#'
 #' @keywords internal
 utils::globalVariables(c("relative_contribution", "FunctionID", "taxon_function_abun", "total_abun", "TaxonID"))
 
@@ -31,9 +26,10 @@ con_mpn_int <- function(
     sub_df <- merged[merged$class == cls, ]
     if (nrow(sub_df) == 0) next
 
-    # Fast Aggregation using data.table
     dt <- data.table::as.data.table(sub_df)
-    res <- dt[, .(taxon_function_abun = sum(taxon_function_abun)), by = .(FunctionID, TaxonID)]
+
+    # FIX: Swapped .() for list() here as well
+    res <- dt[, list(taxon_function_abun = sum(taxon_function_abun)), by = list(FunctionID, TaxonID)]
     res[, total_abun := sum(taxon_function_abun), by = FunctionID]
     res[, relative_contribution := data.table::fifelse(total_abun == 0, 0, taxon_function_abun / total_abun)]
 
@@ -45,7 +41,6 @@ con_mpn_int <- function(
         res[, threshold := NULL]
       } else if (grepl("top", mpn_filtering)) {
         perc <- as.numeric(gsub("top|%", "", mpn_filtering)) / 100
-        # Fast top N% slice per group
         res <- res[order(FunctionID, -relative_contribution)]
         res <- res[, .SD[1:max(1, round(.N * perc))], by = FunctionID]
       }
