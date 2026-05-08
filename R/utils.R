@@ -4,11 +4,11 @@
 #'
 #' @details
 #' Uses high-performance `data.table::fread` to read massive omics datasets
-#' significantly faster than base R, returning a standard data.frame.
+#' significantly faster than base R, handling row.names safely.
 #'
 #' @param file_path A character string specifying the path to the input file.
 #' @param file_type A character string indicating the file type ("csv" or "tsv").
-#' @param ... Additional arguments to pass to `data.table::fread`.
+#' @param ... Additional arguments to pass to the reader.
 #' @return A data frame containing the data from the specified file.
 #' @keywords internal
 read_input_file <- function(file_path, file_type = c("csv", "tsv"), ...) {
@@ -18,14 +18,28 @@ read_input_file <- function(file_path, file_type = c("csv", "tsv"), ...) {
     stop(paste("File not found:", file_path))
   }
 
-  if (!requireNamespace("data.table", quietly = TRUE)) {
-    stop("The 'data.table' package is required for fast file I/O. Please install it.")
+  # Capture extra arguments (like row.names and check.names)
+  args <- list(...)
+
+  # Extract and remove row.names so fread doesn't crash
+  row_col <- args$row.names
+  args$row.names <- NULL
+
+  if (requireNamespace("data.table", quietly = TRUE)) {
+    sep_char <- if (file_type == "csv") "," else "\t"
+    # Fast read using data.table
+    data <- do.call(data.table::fread, c(list(file = file_path, sep = sep_char, data.table = FALSE), args))
+  } else {
+    # Fallback to base R
+    sep_char <- if (file_type == "csv") "," else "\t"
+    data <- read.delim(file_path, sep = sep_char, ...)
   }
 
-  sep_char <- if (file_type == "csv") "," else "\t"
-
-  # fread automatically handles large files efficiently
-  data <- data.table::fread(file_path, sep = sep_char, data.table = FALSE, ...)
+  # Manually apply row names if the inner functions requested them
+  if (!is.null(row_col) && row_col == 1) {
+    rownames(data) <- as.character(data[[1]])
+    data <- data[, -1, drop = FALSE]
+  }
 
   return(data)
 }
