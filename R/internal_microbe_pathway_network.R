@@ -1,36 +1,24 @@
 #' Internal Microbe-Pathway Network Helper
 #'
 #' @details
-#' Connects Microbes to Pathways by calculating the relative contribution of taxa 
-#' to functions and applying user-defined filters to retain significant connections.
+#' Connects Microbes to Pathways utilizing data.table for rapid aggregation
+#' and threshold filtering.
 #'
-#' @param path_con_file Character path to processed contribution file.
-#' @param metadata_file Character path to metadata file.
-#' @param taxonomy_file Character path to taxonomy file (Optional/NULL).
-#' @param output_dir Character path to output directory.
-#' @param mpn_filtering Filtering options: "unfiltered", "mean", "median", "top10%", "top25%", "top50%", "top75%".
-#' @return Vector of MPN file paths.
 #' @keywords internal
-utils::globalVariables(c("relative_contribution", "FunctionID"))
+utils::globalVariables(c("relative_contribution", "FunctionID", "taxon_function_abun", "total_abun", "TaxonID"))
 
 con_mpn_int <- function(
-  path_con_file,
-  metadata_file,
-  taxonomy_file = NULL,
-  output_dir,
+  path_con_file, metadata_file, taxonomy_file = NULL, output_dir,
   mpn_filtering = "top10%"
 ) {
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+  if (!requireNamespace("data.table", quietly = TRUE)) stop("Install 'data.table'.")
 
-  # Read Data
   contrib <- read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE)
   meta <- read_input_file(metadata_file, file_type = "csv", stringsAsFactors = FALSE)
 
-  # Merge Metadata
   merged <- merge(contrib, meta, by = "SampleID")
 
-  # Conditional Taxonomy Merge
-  # Only merge if a taxonomy file is provided AND not already present
   if (!is.null(taxonomy_file)) {
     taxonomy <- read_input_file(taxonomy_file, file_type = "csv", stringsAsFactors = FALSE)
     merged <- merge(merged, taxonomy, by = "FeatureID")
@@ -43,39 +31,32 @@ con_mpn_int <- function(
     sub_df <- merged[merged$class == cls, ]
     if (nrow(sub_df) == 0) next
 
-    # Aggregation
-    agg <- aggregate(taxon_function_abun ~ FunctionID + TaxonID, data = sub_df, sum)
-    func_totals <- aggregate(taxon_function_abun ~ FunctionID, data = agg, sum)
-    colnames(func_totals)[2] <- "total_abun"
+    # Fast Aggregation using data.table
+    dt <- data.table::as.data.table(sub_df)
+    res <- dt[, .(taxon_function_abun = sum(taxon_function_abun)), by = .(FunctionID, TaxonID)]
+    res[, total_abun := sum(taxon_function_abun), by = FunctionID]
+    res[, relative_contribution := data.table::fifelse(total_abun == 0, 0, taxon_function_abun / total_abun)]
 
-    res <- merge(agg, func_totals, by = "FunctionID")
-    res$relative_contribution <- ifelse(res$total_abun == 0, 0, res$taxon_function_abun / res$total_abun)
-
-    # Filtering Logic
     if (mpn_filtering != "unfiltered") {
       if (mpn_filtering %in% c("mean", "median")) {
         FUN_used <- if (mpn_filtering == "mean") mean else median
-        thresh <- aggregate(relative_contribution ~ FunctionID, res, FUN_used)
-        colnames(thresh)[2] <- "threshold"
-        res <- merge(res, thresh, by = "FunctionID")
-        res <- res[res$relative_contribution >= res$threshold, ]
+        res[, threshold := FUN_used(relative_contribution), by = FunctionID]
+        res <- res[relative_contribution >= threshold]
+        res[, threshold := NULL]
       } else if (grepl("top", mpn_filtering)) {
         perc <- as.numeric(gsub("top|%", "", mpn_filtering)) / 100
-        res <- res |>
-          dplyr::group_by(FunctionID) |>
-          dplyr::arrange(dplyr::desc(relative_contribution)) |>
-          dplyr::slice_head(prop = perc) |>
-          dplyr::ungroup() |>
-          as.data.frame()
+        # Fast top N% slice per group
+        res <- res[order(FunctionID, -relative_contribution)]
+        res <- res[, .SD[1:max(1, round(.N * perc))], by = FunctionID]
       }
     }
 
-    # Only save if results exist
-    if (nrow(res) > 0) {
+    res_df <- as.data.frame(res)
+    if (nrow(res_df) > 0) {
       fname <- file.path(output_dir, paste0("mpn_", cls, ".csv"))
-      write.csv(res, fname, row.names = FALSE)
+      write.csv(res_df, fname, row.names = FALSE)
       output_paths <- c(output_paths, fname)
     }
   }
-  output_paths
+  return(output_paths)
 }
