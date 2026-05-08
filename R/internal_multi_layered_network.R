@@ -23,7 +23,6 @@ con_mln_int <- function(
 ) {
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-  # Ensure path is defined early to prevent 'out_path not found' error
   out_path <- file.path(output_dir, paste0("final_mln_data_", basename(gsea_file)))
 
   mpn <- read_input_file(mpn_file, file_type = "csv", stringsAsFactors = FALSE)
@@ -51,7 +50,6 @@ con_mln_int <- function(
     write.csv(edges, out_path, row.names = FALSE)
     library(igraph)
     g <- igraph::graph_from_data_frame(edges, directed = FALSE)
-
     igraph::V(g)$type <- ifelse(igraph::V(g)$name %in% edges$Feature1[edges$edge_type == "Microbe-Pathway"], "Microbe",
       ifelse(igraph::V(g)$name %in% edges$Feature2[edges$edge_type == "Pathway-Metabolite"], "Metabolite", "Pathway")
     )
@@ -59,25 +57,21 @@ con_mln_int <- function(
     if (visualize) {
       tryCatch(
         {
-          # 1. Prepare Nodes
-          node_names_clean <- sapply(igraph::V(g)$name, function(x) {
-            type <- igraph::V(g)$type[igraph::V(g)$name == x]
-            if (type == "Microbe") {
-              return(clean_taxonomy(x))
-            } else {
-              return(x)
-            }
-          })
-
+          # 1. Node data
           nodes_df <- data.frame(
             id = igraph::V(g)$name,
-            label = unname(node_names_clean),
+            label = unname(sapply(igraph::V(g)$name, function(x) {
+              if (igraph::V(g)$type[igraph::V(g)$name == x] == "Microbe") {
+                return(clean_taxonomy(x))
+              } else {
+                return(x)
+              }
+            })),
             group = igraph::V(g)$type,
-            title = paste0("<div style='padding:8px; font-family:sans-serif;'><b>ID:</b> ", igraph::V(g)$name, "</div>"),
             stringsAsFactors = FALSE
           )
 
-          # Initialize Coordinates for 3-Zone Cluster
+          # Calculate 3-Zone Coordinates
           types <- c("Microbe", "Pathway", "Metabolite")
           x_offsets <- c(-700, 0, 700)
           nodes_df$x <- 0
@@ -85,8 +79,8 @@ con_mln_int <- function(
           for (i in 1:3) {
             idx <- which(nodes_df$group == types[i])
             if (length(idx) > 0) {
-              nodes_df$x[idx] <- x_offsets[i] + runif(length(idx), -50, 50)
-              nodes_df$y[idx] <- seq(-400, 400, length.out = length(idx))
+              nodes_df$x[idx] <- x_offsets[i]
+              nodes_df$y[idx] <- seq(-450, 450, length.out = length(idx))
             }
           }
 
@@ -96,36 +90,40 @@ con_mln_int <- function(
           edges_df <- data.frame(from = edges$Feature1, to = edges$Feature2, value = edges$edge_score)
 
           # 3. Build Plot
-          vis_plot <- visNetwork::visNetwork(nodes_df, edges_df, width = "100%", height = "100vh") |>
+          vis_plot <- visNetwork::visNetwork(
+            nodes_df, edges_df,
+            width = "100%", height = "100vh",
+            main = list(
+              text = "💡 Tip: Scroll to zoom in/out. Drag nodes to perfect your layout.",
+              style = "color: #475569; font-family: sans-serif; font-size: 14px; text-align: center;"
+            )
+          ) |>
             visNetwork::visNodes(
-              font = list(color = "#1e293b", size = 18, background = "rgba(255,255,255,0.7)"),
+              font = list(color = "#1e293b", size = 18, background = "rgba(255,255,255,0.8)"),
               borderWidth = 1.5, shadow = list(enabled = TRUE)
             ) |>
             visNetwork::visEdges(
               smooth = list(enabled = TRUE, type = "continuous"),
               color = list(color = "rgba(148, 163, 184, 0.4)", highlight = "#e11d48")
             ) |>
+            visNetwork::visGroups(groupname = "Microbe", color = "#0ea5e9", shape = "hexagon") |>
+            visNetwork::visGroups(groupname = "Pathway", color = "#8b5cf6", shape = "dot") |>
+            visNetwork::visGroups(groupname = "Metabolite", color = "#f59e0b", shape = "diamond") |>
+            visNetwork::visLegend(useGroups = TRUE, position = "right", width = 0.1, main = NULL) |>
             visNetwork::visInteraction(
-              navigationButtons = TRUE, dragNodes = TRUE, multiselect = TRUE, hover = TRUE
+              navigationButtons = FALSE, # Removes green cursors
+              dragNodes = TRUE,
+              dragView = TRUE,
+              zoomView = TRUE,
+              multiselect = TRUE,
+              hover = TRUE
             ) |>
-            # ADVANCED PHYSICS FOR PRACTICAL USE (ANTI-OVERLAP)
-            visNetwork::visPhysics(
-              enabled = TRUE,
-              solver = "forceAtlas2Based",
-              forceAtlas2Based = list(
-                gravitationalConstant = -150,
-                centralGravity = 0.01,
-                springLength = 100,
-                springConstant = 0.08,
-                avoidOverlap = 1 # THIS STOPS NODES FROM OVERLAPPING
-              ),
-              stabilization = list(enabled = TRUE, iterations = 200)
-            ) |>
+            # PHYSICS OFF: This ensures nodes stay exactly where they are dropped
+            visNetwork::visPhysics(enabled = FALSE) |>
             visNetwork::visExport(
               type = "png", label = "💾 SAVE NETWORK",
-              style = "position:absolute; left:20px; bottom:40px; background:#1e293b; color:white; padding:12px 20px; border-radius:8px; border:none; cursor:pointer; font-weight:bold; z-index:1000;"
-            ) |>
-            visNetwork::visConfigure(enabled = TRUE, filter = c("physics", "layout"))
+              style = "position:absolute; left:20px; bottom:40px; background:#64748b; color:white; padding:12px 24px; border-radius:8px; border:none; cursor:pointer; font-weight:bold; font-family:sans-serif; z-index:1000; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
+            )
 
           vis_plot$x$background <- "#ffffff"
 
