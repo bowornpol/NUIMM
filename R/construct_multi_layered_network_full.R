@@ -16,7 +16,7 @@ con_mln <- function(
   pmn_filter_by = c("none", "p_value", "q_value"),
   pmn_corr_cutoff = 0.3, pmn_pvalue_cutoff = 0.05, pmn_q_value_cutoff = 0.05,
   pmn_p_adjust_method = "fdr", visualize = TRUE, layout_method = "sugiyama",
-  # --- CUSTOM BIOTECH DEFAULTS ---
+  # --- Modern Biotech Defaults ---
   node_colors = c("Microbe" = "#9AA374", "Pathway" = "#C1ABAD", "Metabolite" = "#4E7286"),
   node_shapes = c("Microbe" = "hexagon", "Pathway" = "dot", "Metabolite" = "diamond"),
   base_node_size = 6, plot_width = 12, plot_height = 10, plot_dpi = 600
@@ -28,10 +28,10 @@ con_mln <- function(
 
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-  message("--- Preprocessing Data (Format: ", format, ") ---")
+  message("--- Preparing Scalable Pipeline (Format: ", format, ") ---")
   processed_contrib_file <- file.path(output_dir, "processed_contribution.csv")
 
-  # --- PICRUSt Bulletproof Preprocessing ---
+  # Standardized Preprocessing
   if (format == "picrust") {
     if (is.null(taxonomy_file)) stop("Taxonomy file is required for PICRUSt format.")
     contrib <- read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE)
@@ -59,7 +59,7 @@ con_mln <- function(
     write.csv(long_df[, c("SampleID", "FunctionID", "FeatureID", "TaxonID", "taxon_function_abun")], processed_contrib_file, row.names = FALSE)
   }
 
-  # --- Layer Construction ---
+  # Execute Layers safely
   ppn_results <- con_ppn_int(
     gene_abun_file = gene_abun_file, metadata_file = metadata_file, map_file = map_file,
     output_dir = file.path(output_dir, "ppn_output"), ppn_da_method = ppn_da_method,
@@ -73,20 +73,20 @@ con_mln <- function(
   for (i in seq_along(ppn_results$gsea_paths)) {
     curr_gsea <- ppn_results$gsea_paths[i]
     curr_jaccard <- ppn_results$jaccard_paths[i]
-    message("\nProcessing integration for: ", basename(curr_gsea))
+    message("\nInitiating integration algorithm for: ", basename(curr_gsea))
 
     curr_mpn <- con_mpn_int(processed_contrib_file, metadata_file, NULL, file.path(output_dir, "mpn_output"), mpn_filtering)[1]
     curr_pmn <- con_pmn_int(path_abun_file, met_con_file, curr_gsea, metadata_file, file.path(output_dir, "pmn_output"), pmn_corr_method, pmn_filter_by, pmn_corr_cutoff, pmn_pvalue_cutoff, pmn_q_value_cutoff, pmn_p_adjust_method)[1]
 
-    # --- FINAL INTEGRATION CALL ---
     res_path <- con_mln_int(
       gsea_file = curr_gsea, mpn_file = curr_mpn, ppn_file = curr_jaccard, pmn_file = curr_pmn,
       output_dir = file.path(output_dir, "mln_final"), visualize = visualize,
       layout_method = layout_method, node_colors = node_colors, node_shapes = node_shapes,
       base_node_size = base_node_size, plot_width = plot_width, plot_height = plot_height, plot_dpi = plot_dpi
     )
-    final_outputs <- c(final_outputs, res_path)
+    if (!is.null(res_path)) final_outputs <- c(final_outputs, res_path)
   }
-  message("Multi-Layered Network Pipeline Complete.")
+
+  message("\n--- Multi-Layered Network Pipeline Successfully Completed ---")
   return(final_outputs)
 }
