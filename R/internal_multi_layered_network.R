@@ -5,20 +5,17 @@ utils::globalVariables(c("type", "weight", "name", "edge_score", "layer"))
 # --- Helper Function to Clean Microbial Taxonomy ---
 clean_taxonomy <- function(tax_string) {
   if (grepl("g__", tax_string)) {
-    # Split by semicolon (with or without spaces)
     parts <- unlist(strsplit(tax_string, ";\\s*|;"))
-
     g_part <- parts[grepl("^g__", parts)][1]
     s_part <- parts[grepl("^s__", parts)][1]
 
-    # Check if species exists and is actually named (longer than just "s__")
     if (!is.na(s_part) && nchar(s_part) > 3) {
       return(paste(g_part, s_part, sep = " "))
     } else if (!is.na(g_part)) {
       return(g_part)
     }
   }
-  return(tax_string) # Return original if it doesn't match
+  return(tax_string)
 }
 
 con_mln_int <- function(
@@ -85,14 +82,18 @@ con_mln_int <- function(
               stringsAsFactors = FALSE
             )
 
-            # Custom Academic Colors (Beautiful on White Background)
+            # EXPLICIT HIERARCHY: Microbe (1) -> Pathway (2) -> Metabolite (3)
+            nodes_df$level <- ifelse(nodes_df$group == "Microbe", 1,
+              ifelse(nodes_df$group == "Pathway", 2, 3)
+            )
+
+            # Colors & Shapes
             shape_map <- c("Microbe" = "hexagon", "Pathway" = "dot", "Metabolite" = "diamond")
             color_map <- c("Microbe" = "#0ea5e9", "Pathway" = "#8b5cf6", "Metabolite" = "#f59e0b")
 
             nodes_df$shape <- shape_map[nodes_df$group]
             nodes_df$color <- color_map[nodes_df$group]
 
-            # 2. Prepare Edges
             edges_df <- data.frame(
               from = edges$Feature1,
               to = edges$Feature2,
@@ -100,11 +101,11 @@ con_mln_int <- function(
               title = paste0("<div style='padding:5px; font-family:sans-serif;'><b>Edge Score:</b> ", round(edges$edge_score, 4), "</div>")
             )
 
-            # 3. Build Interactive Plot (White Theme & Dynamic Layout)
+            # 3. Build Interactive Plot
+            # Using 100vh height ensures the canvas perfectly fits the browser window (no cut-off menus)
             vis_plot <- visNetwork::visNetwork(
               nodes_df, edges_df,
-              width = "100%", height = "900px",
-              main = list(text = "💡 Tip: Drag nodes to arrange. Scroll to zoom. Use the menu below to change to a Circle or Hierarchical layout.", style = "color: #334155; font-family: sans-serif; font-size: 16px; font-weight: bold; text-align: center;")
+              width = "100%", height = "100vh"
             ) |>
               visNetwork::visNodes(
                 font = list(color = "#1e293b", size = 16, face = "sans-serif", strokeWidth = 2, strokeColor = "#ffffff"),
@@ -114,38 +115,38 @@ con_mln_int <- function(
                 shadow = list(enabled = TRUE, color = "rgba(0,0,0,0.15)", size = 8, x = 2, y = 2)
               ) |>
               visNetwork::visEdges(
-                smooth = list(enabled = TRUE, type = "continuous"),
+                smooth = list(enabled = TRUE, type = "cubicBezier", roundness = 0.5),
                 color = list(color = "rgba(148, 163, 184, 0.6)", highlight = "#e11d48", hover = "#e11d48"),
                 selectionWidth = 3
               ) |>
+              visNetwork::visHierarchicalLayout(
+                direction = "UD", # Up-Down
+                levelSeparation = 250, # Vertical gap between the 3 layers
+                nodeSpacing = 80, # Horizontal gap between nodes in the same layer
+                sortMethod = "directed"
+              ) |>
               visNetwork::visOptions(
                 highlightNearest = list(enabled = TRUE, degree = 1, hover = TRUE, hideColor = "rgba(255, 255, 255, 0.8)"),
-                nodesIdSelection = list(enabled = TRUE, style = "width: 250px; background: #f8fafc; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 5px; padding: 5px;"),
-                selectedBy = list(variable = "group", style = "width: 250px; background: #f8fafc; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 5px; padding: 5px;")
+                selectedBy = list(variable = "group", multiple = TRUE, main = "🔍 Highlight by Group")
               ) |>
               visNetwork::visInteraction(
-                navigationButtons = FALSE, # FIX: Removes the buttons that fall off the screen
+                navigationButtons = TRUE, # Shows standard zoom/pan controls
                 dragNodes = TRUE,
                 dragView = TRUE,
                 zoomView = TRUE,
-                hover = TRUE
+                hover = TRUE,
+                multiselect = TRUE # ENABLES CTRL + DRAG TO SELECT MULTIPLE NODES
               ) |>
-              visNetwork::visPhysics(
-                enabled = TRUE,
-                solver = "forceAtlas2Based", # Creates beautiful, organic clustering naturally
-                forceAtlas2Based = list(gravitationalConstant = -70, centralGravity = 0.01, springLength = 100, springConstant = 0.08),
-                stabilization = list(enabled = TRUE, iterations = 300)
-              ) |>
+              visNetwork::visPhysics(enabled = FALSE) |> # KILLS THE JIGGLE. IT WILL STAY STILL.
               visNetwork::visExport(
                 type = "png",
                 name = paste0("network_", tools::file_path_sans_ext(basename(gsea_file))),
                 label = "📸 Save Network Image",
-                style = "background: #f8fafc; color: #0f172a; border: 2px solid #cbd5e1; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"
-              ) |>
-              # ADDS THE USER LAYOUT MENU AT THE BOTTOM:
-              visNetwork::visConfigure(enabled = TRUE, filter = c("layout", "physics"))
+                # Custom CSS to pin the button to the bottom left corner
+                style = "position: absolute; left: 20px; bottom: 30px; background: #0f172a; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: bold; font-family: sans-serif; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;"
+              )
 
-            vis_plot$x$background <- "#ffffff" # Pure white background
+            vis_plot$x$background <- "#ffffff"
 
             # 4. Save Self-Contained HTML
             html_path <- file.path(output_dir, paste0("interactive_mln_", tools::file_path_sans_ext(basename(gsea_file)), ".html"))
