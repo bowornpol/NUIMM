@@ -20,8 +20,9 @@ con_mln <- function(
   pmn_filter_by = c("none", "p_value", "q_value"),
   pmn_corr_cutoff = 0.3, pmn_pvalue_cutoff = 0.05, pmn_q_value_cutoff = 0.05,
   pmn_p_adjust_method = "fdr", visualize = TRUE, layout_method = "sugiyama",
-  node_colors = c("Microbe" = "#D55E00", "Pathway" = "#0072B2", "Metabolite" = "#009E73"),
-  node_shapes = c("Microbe" = 24, "Pathway" = 21, "Metabolite" = 22),
+  # --- UPDATED DEFAULTS TO MATCH YOUR THEME ---
+  node_colors = c("Microbe" = "#9AA374", "Pathway" = "#C1ABAD", "Metabolite" = "#4E7286"),
+  node_shapes = c("Microbe" = "hexagon", "Pathway" = "dot", "Metabolite" = "diamond"),
   base_node_size = 6, plot_width = 12, plot_height = 10, plot_dpi = 600
 ) {
   format <- match.arg(format)
@@ -36,7 +37,6 @@ con_mln <- function(
   processed_contrib_file <- file.path(output_dir, "processed_contribution.csv")
   taxonomy_file_to_pass <- NULL
 
-  # --- BULLETPROOF PREPROCESSING ---
   if (format == "universal") {
     df <- read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE)
     required <- c("SampleID", "PathwayID", "TaxonID", "contribution")
@@ -53,38 +53,28 @@ con_mln <- function(
     contrib <- read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE)
     tax <- read_input_file(taxonomy_file, file_type = "csv", stringsAsFactors = FALSE)
 
-    # Standard merge
     merged <- merge(contrib, tax, by = "FeatureID", all = FALSE)
-
-    # Standard subsetting using character vectors (Immune to scoping bugs)
     keep_cols <- c("SampleID", "PathwayID", "FeatureID", "TaxonID", "taxon_function_abun")
-    if (!all(keep_cols %in% colnames(merged))) {
-      stop("Missing required columns after taxonomy merge. Check exact spelling.")
-    }
+    if (!all(keep_cols %in% colnames(merged))) stop("Missing required columns. Check exact spelling.")
 
     final_df <- merged[, keep_cols]
     colnames(final_df)[colnames(final_df) == "PathwayID"] <- "FunctionID"
-
     write.csv(final_df, processed_contrib_file, row.names = FALSE)
   } else if (format == "humann") {
     df <- read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE, check.names = FALSE)
     col1_name <- colnames(df)[1]
     sample_cols <- colnames(df)[-1]
-
     long_df <- tidyr::pivot_longer(df, cols = dplyr::all_of(sample_cols), names_to = "SampleID", values_to = "taxon_function_abun")
     long_df <- long_df[grepl("\\|", long_df[[col1_name]]), ]
-
     split_data <- stringr::str_split_fixed(long_df[[col1_name]], "\\|", 2)
     long_df$FunctionID <- split_data[, 1]
     long_df$FeatureID <- split_data[, 2]
     long_df$TaxonID <- long_df$FeatureID
-
     final_df <- long_df[, c("SampleID", "FunctionID", "FeatureID", "TaxonID", "taxon_function_abun")]
     write.csv(final_df, processed_contrib_file, row.names = FALSE)
   }
 
   ppn_dir <- file.path(output_dir, "ppn_output")
-
   ppn_results <- con_ppn_int(
     gene_abun_file = gene_abun_file, metadata_file = metadata_file, map_file = map_file,
     output_dir = ppn_dir, ppn_da_method = ppn_da_method, ppn_map_database = ppn_map_database,
@@ -95,11 +85,9 @@ con_mln <- function(
 
   gsea_files <- ppn_results$gsea_paths
   jaccard_files <- ppn_results$jaccard_paths
-
-  if (length(gsea_files) == 0) stop("No significant GSEA results found. Try relaxing ppn_pvalue_cutoff.")
+  if (length(gsea_files) == 0) stop("No significant GSEA results found.")
 
   final_networks <- c()
-
   for (i in seq_along(gsea_files)) {
     curr_gsea <- gsea_files[i]
     curr_jaccard <- jaccard_files[i]
@@ -112,10 +100,7 @@ con_mln <- function(
       taxonomy_file = taxonomy_file_to_pass, output_dir = mpn_dir, mpn_filtering = mpn_filtering
     )
 
-    if (length(mpn_files) == 0) {
-      warning("MPN layer could not be generated. Skipping integration for this comparison.")
-      next
-    }
+    if (length(mpn_files) == 0) next
     curr_mpn <- mpn_files[1]
 
     pmn_dir <- file.path(output_dir, "pmn_output")
@@ -127,11 +112,6 @@ con_mln <- function(
       pmn_p_adjust_method = pmn_p_adjust_method
     )
     curr_pmn <- if (length(pmn_files) > 0) pmn_files[1] else NULL
-
-    if (is.na(curr_mpn) || !file.exists(curr_mpn)) {
-      warning("MPN file invalid. Skipping.")
-      next
-    }
 
     mln_dir <- file.path(output_dir, "mln_final")
     final_net <- con_mln_int(
