@@ -5,20 +5,16 @@ utils::globalVariables(c("type", "weight", "name", "edge_score", "layer"))
 # --- Helper Function to Clean Microbial Taxonomy ---
 clean_taxonomy <- function(tax_string) {
   if (grepl("g__", tax_string)) {
-    # Split by semicolon (with or without spaces)
     parts <- unlist(strsplit(tax_string, ";\\s*|;"))
-
     g_part <- parts[grepl("^g__", parts)][1]
     s_part <- parts[grepl("^s__", parts)][1]
-
-    # Check if species exists and is actually named (longer than just "s__")
     if (!is.na(s_part) && nchar(s_part) > 3) {
       return(paste(g_part, s_part, sep = " "))
     } else if (!is.na(g_part)) {
       return(g_part)
     }
   }
-  return(tax_string) # Return original if it doesn't match
+  return(tax_string)
 }
 
 con_mln_int <- function(
@@ -54,113 +50,83 @@ con_mln_int <- function(
   if (nrow(edges) > 0) {
     library(igraph)
     g <- igraph::graph_from_data_frame(edges, directed = FALSE)
-
     igraph::V(g)$type <- ifelse(igraph::V(g)$name %in% edges$Feature1[edges$edge_type == "Microbe-Pathway"], "Microbe",
       ifelse(igraph::V(g)$name %in% edges$Feature2[edges$edge_type == "Pathway-Metabolite"], "Metabolite", "Pathway")
     )
 
-    igraph::write_graph(g, file.path(output_dir, paste0("final_mln_", tools::file_path_sans_ext(basename(gsea_file)), ".graphml")), format = "graphml")
-
     if (visualize) {
       tryCatch(
         {
-          if (!requireNamespace("visNetwork", quietly = TRUE) || !requireNamespace("htmlwidgets", quietly = TRUE)) {
-            warning("Install 'visNetwork' and 'htmlwidgets' for interactive HTML plotting.")
-          } else {
-            # 1. Prepare Nodes & Apply Taxonomy Cleaner
-            node_names_clean <- sapply(igraph::V(g)$name, function(x) {
-              type <- igraph::V(g)$type[igraph::V(g)$name == x]
-              if (type == "Microbe") {
+          # 1. Node data preparation
+          nodes_df <- data.frame(
+            id = igraph::V(g)$name,
+            label = unname(sapply(igraph::V(g)$name, function(x) {
+              if (igraph::V(g)$type[igraph::V(g)$name == x] == "Microbe") {
                 return(clean_taxonomy(x))
               } else {
                 return(x)
               }
-            })
+            })),
+            group = igraph::V(g)$type,
+            stringsAsFactors = FALSE
+          )
 
-            nodes_df <- data.frame(
-              id = igraph::V(g)$name,
-              label = unname(node_names_clean),
-              group = igraph::V(g)$type,
-              title = paste0("<div style='padding:8px; font-family:sans-serif; background:white; color:black; border-radius:5px;'><b>Type:</b> ", igraph::V(g)$type, "<br><b>ID:</b> ", igraph::V(g)$name, "</div>"),
-              stringsAsFactors = FALSE
-            )
+          # 2. CALCULATION FOR TRI-CIRCLE LAYOUT
+          # Manually setting offsets: Left (-600), Center (0), Right (600)
+          types <- c("Microbe", "Pathway", "Metabolite")
+          x_offsets <- c(-600, 0, 600)
 
-            # EXPLICIT HIERARCHY: Microbe (1) on Top, Pathway (2) in Middle, Metabolite (3) on Bottom
-            nodes_df$level <- ifelse(nodes_df$group == "Microbe", 1,
-              ifelse(nodes_df$group == "Pathway", 2, 3)
-            )
+          nodes_df$x <- 0
+          nodes_df$y <- 0
 
-            # Custom Academic Colors (Beautiful on White Background)
-            shape_map <- c("Microbe" = "hexagon", "Pathway" = "dot", "Metabolite" = "diamond")
-            color_map <- c("Microbe" = "#0ea5e9", "Pathway" = "#8b5cf6", "Metabolite" = "#f59e0b")
-
-            nodes_df$shape <- shape_map[nodes_df$group]
-            nodes_df$color <- color_map[nodes_df$group]
-
-            # 2. Prepare Edges
-            edges_df <- data.frame(
-              from = edges$Feature1,
-              to = edges$Feature2,
-              value = edges$edge_score,
-              title = paste0("<div style='padding:5px; font-family:sans-serif;'><b>Edge Score:</b> ", round(edges$edge_score, 4), "</div>")
-            )
-
-            # 3. Build Interactive Plot (White Theme & Fixed Top-Down Layout)
-            # Use 100vh so navigation buttons never get cut off at the bottom
-            vis_plot <- visNetwork::visNetwork(
-              nodes_df, edges_df,
-              width = "100%", height = "100vh",
-              main = list(text = "💡 Tip: Hold Ctrl + Drag to move multiple nodes. Use the buttons below to zoom/pan.", style = "color: #334155; font-family: sans-serif; font-size: 16px; font-weight: bold; text-align: center;")
-            ) |>
-              visNetwork::visNodes(
-                font = list(color = "#1e293b", size = 16, face = "sans-serif", strokeWidth = 2, strokeColor = "#ffffff"),
-                borderWidth = 1.5,
-                borderWidthSelected = 5,
-                scaling = list(min = 15, max = 35),
-                shadow = list(enabled = TRUE, color = "rgba(0,0,0,0.15)", size = 8, x = 2, y = 2)
-              ) |>
-              visNetwork::visEdges(
-                smooth = list(enabled = TRUE, type = "cubicBezier", roundness = 0.5),
-                color = list(color = "rgba(148, 163, 184, 0.6)", highlight = "#e11d48", hover = "#e11d48"),
-                selectionWidth = 3
-              ) |>
-              visNetwork::visHierarchicalLayout(
-                direction = "UD", # Up-Down
-                levelSeparation = 250, # Vertical gap between the 3 layers
-                nodeSpacing = 80, # Horizontal gap between nodes in the same layer
-                sortMethod = "directed"
-              ) |>
-              visNetwork::visOptions(
-                highlightNearest = list(enabled = TRUE, degree = 1, hover = TRUE, hideColor = "rgba(255, 255, 255, 0.8)"),
-                nodesIdSelection = list(enabled = TRUE, style = "width: 250px; background: #f8fafc; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 5px; padding: 5px; margin-bottom: 10px;"),
-                selectedBy = list(variable = "group", multiple = TRUE, style = "width: 250px; background: #f8fafc; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 5px; padding: 5px;")
-              ) |>
-              visNetwork::visInteraction(
-                navigationButtons = TRUE, # Shows zoom/pan cursors properly
-                dragNodes = TRUE,
-                dragView = TRUE,
-                zoomView = TRUE,
-                hover = TRUE,
-                multiselect = TRUE # Enables Ctrl + Drag
-              ) |>
-              visNetwork::visPhysics(enabled = FALSE) |> # Kills the physics jiggle
-              visNetwork::visExport(
-                type = "png",
-                name = paste0("network_", tools::file_path_sans_ext(basename(gsea_file))),
-                label = "📸 Save Network Image",
-                # CSS to pin the button neatly to the bottom left
-                style = "position: absolute; left: 20px; bottom: 30px; background: #0f172a; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: bold; font-family: sans-serif; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 1000;"
-              )
-
-            vis_plot$x$background <- "#ffffff" # Pure white background
-
-            # 4. Save Self-Contained HTML
-            html_path <- file.path(output_dir, paste0("interactive_mln_", tools::file_path_sans_ext(basename(gsea_file)), ".html"))
-            htmlwidgets::saveWidget(vis_plot, file = html_path, selfcontained = TRUE, background = "#ffffff")
-            message("  Saved Beautiful Interactive HTML visualization to: ", html_path)
+          for (i in 1:3) {
+            idx <- which(nodes_df$group == types[i])
+            n <- length(idx)
+            if (n > 0) {
+              angle <- seq(0, 2 * pi, length.out = n + 1)[1:n]
+              radius <- 180 + (n * 1.5)
+              nodes_df$x[idx] <- x_offsets[i] + radius * cos(angle)
+              nodes_df$y[idx] <- radius * sin(angle)
+            }
           }
+
+          # Styling for White Background
+          nodes_df$shape <- c("Microbe" = "hexagon", "Pathway" = "dot", "Metabolite" = "diamond")[nodes_df$group]
+          nodes_df$color <- c("Microbe" = "#0ea5e9", "Pathway" = "#8b5cf6", "Metabolite" = "#f59e0b")[nodes_df$group]
+
+          edges_df <- data.frame(from = edges$Feature1, to = edges$Feature2, value = edges$edge_score)
+
+          # 3. Build Simplified Plot with Right-Side Legend
+          vis_plot <- visNetwork::visNetwork(nodes_df, edges_df, width = "100%", height = "100vh") |>
+            visNetwork::visNodes(
+              font = list(color = "#1e293b", size = 18, face = "sans-serif"),
+              shadow = list(enabled = TRUE, color = "rgba(0,0,0,0.1)", size = 10)
+            ) |>
+            visNetwork::visEdges(
+              smooth = list(enabled = TRUE, type = "curvedCW", roundness = 0.2),
+              color = list(color = "rgba(180, 180, 180, 0.4)", highlight = "#e11d48")
+            ) |>
+            # Define Groups for the Legend
+            visNetwork::visGroups(groupname = "Microbe", color = "#0ea5e9", shape = "hexagon") |>
+            visNetwork::visGroups(groupname = "Pathway", color = "#8b5cf6", shape = "dot") |>
+            visNetwork::visGroups(groupname = "Metabolite", color = "#f59e0b", shape = "diamond") |>
+            visNetwork::visLegend(main = "Node Key", position = "right", width = 0.1) |>
+            visNetwork::visInteraction(
+              dragNodes = TRUE, dragView = TRUE, zoomView = TRUE, multiselect = TRUE, navigationButtons = TRUE
+            ) |>
+            visNetwork::visPhysics(enabled = FALSE) |>
+            visNetwork::visExport(
+              type = "png", label = "📸 Save Layout",
+              style = "position:absolute; left:30px; bottom:30px; background:#1e293b; color:white; padding:15px 25px; border-radius:12px; border:none; cursor:pointer; font-weight:bold; font-family:sans-serif; box-shadow: 0 4px 10px rgba(0,0,0,0.2); z-index:1001;"
+            )
+
+          vis_plot$x$background <- "#ffffff"
+
+          html_path <- file.path(output_dir, paste0("interactive_mln_", tools::file_path_sans_ext(basename(gsea_file)), ".html"))
+          htmlwidgets::saveWidget(vis_plot, file = html_path, selfcontained = TRUE, background = "#ffffff")
+          message("Successfully generated clean Tri-Cluster network at: ", html_path)
         },
-        error = function(e) warning("Interactive visualization failed: ", e$message)
+        error = function(e) warning("Visualization failed: ", e$message)
       )
     }
   }
