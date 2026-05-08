@@ -1,25 +1,6 @@
-#' Internal MLN Integration & Visualization Helper
-#'
-#' @details
-#' Assembles the final network by merging edge lists into an `igraph` object and 
-#' plots the hierarchical structure (Microbes, Pathways, Metabolites) using `ggraph`.
-#'
-#' @param gsea_file Character path to GSEA file.
-#' @param mpn_file Character path to MPN file.
-#' @param ppn_file Character path to PPN file.
-#' @param pmn_file Character path to PMN file.
-#' @param output_dir Character path to output directory.
-#' @param visualize Logical internal flag to trigger plot rendering.
-#' @param layout_method Internal layout algorithm parameter.
-#' @param node_colors Internal color mappings.
-#' @param node_shapes Internal shape mappings.
-#' @param base_node_size Internal node size parameter.
-#' @param plot_width Internal plot width.
-#' @param plot_height Internal plot height.
-#' @param plot_dpi Internal plot dpi.
-#' @return Final network file path.
+#' Internal MLN Integration & Interactive Visualization Helper
 #' @keywords internal
-utils::globalVariables(c("type", "weight", "name", "edge_score"))
+utils::globalVariables(c("type", "weight", "name", "edge_score", "layer"))
 
 con_mln_int <- function(
   gsea_file, mpn_file, ppn_file, pmn_file, output_dir,
@@ -51,41 +32,86 @@ con_mln_int <- function(
   out_path <- file.path(output_dir, paste0("final_mln_", basename(gsea_file)))
   write.csv(edges, out_path, row.names = FALSE)
 
-  if (visualize && nrow(edges) > 0) {
-    tryCatch({
-      library(igraph)
-      library(ggraph)
-      library(ggplot2)
-      set.seed(42) # Deterministic layout for reproducibility
+  if (nrow(edges) > 0) {
+    library(igraph)
+    g <- igraph::graph_from_data_frame(edges, directed = FALSE)
 
-      g <- igraph::graph_from_data_frame(edges, directed = FALSE)
-      igraph::V(g)$type <- ifelse(igraph::V(g)$name %in% edges$Feature1[edges$edge_type == "Microbe-Pathway"], "Microbe",
-                           ifelse(igraph::V(g)$name %in% edges$Feature2[edges$edge_type == "Pathway-Metabolite"], "Metabolite", "Pathway"))
-      
-      # Assign hierarchical layers for structural grouping
-      igraph::V(g)$layer <- ifelse(igraph::V(g)$type == "Microbe", 1, ifelse(igraph::V(g)$type == "Pathway", 2, 3))
-      igraph::V(g)$type <- factor(igraph::V(g)$type, levels = c("Microbe", "Pathway", "Metabolite"))
+    igraph::V(g)$type <- ifelse(igraph::V(g)$name %in% edges$Feature1[edges$edge_type == "Microbe-Pathway"], "Microbe",
+      ifelse(igraph::V(g)$name %in% edges$Feature2[edges$edge_type == "Pathway-Metabolite"], "Metabolite", "Pathway")
+    )
+    igraph::V(g)$layer <- ifelse(igraph::V(g)$type == "Microbe", 1, ifelse(igraph::V(g)$type == "Pathway", 2, 3))
 
-      lay <- if (layout_method == "sugiyama") igraph::layout_with_sugiyama(g, layers = igraph::V(g)$layer)$layout else layout_method
+    # --- ADJUSTMENT: Always export GraphML for large-scale external visualization (Cytoscape/Gephi)
+    igraph::write_graph(g, file.path(output_dir, paste0("final_mln_", tools::file_path_sans_ext(basename(gsea_file)), ".graphml")), format = "graphml")
 
-      p <- ggraph::ggraph(g, layout = lay) +
-        ggraph::geom_edge_link(ggplot2::aes(width = edge_score, alpha = edge_score), color = "gray50", show.legend = c(alpha = FALSE)) +
-        ggraph::scale_edge_width(range = c(0.2, 1.5), name = "Edge Score") +
-        ggraph::geom_node_point(ggplot2::aes(fill = type, shape = type), size = base_node_size, color = "black", stroke = 0.5) +
-        ggplot2::scale_fill_manual(name = "Node Type", values = node_colors) +
-        ggplot2::scale_shape_manual(name = "Node Type", values = node_shapes) +
-        ggraph::geom_node_text(ggplot2::aes(label = name), repel = TRUE, size = 3, family = "sans") +
-        ggplot2::theme_void(base_family = "sans") +
-        ggplot2::theme(
-          legend.position = "right",
-          legend.title = ggplot2::element_text(face = "bold", size = 12),
-          legend.text = ggplot2::element_text(size = 10),
-          plot.margin = ggplot2::margin(10, 10, 10, 10)
-        )
+    if (visualize) {
+      tryCatch(
+        {
+          if (!requireNamespace("visNetwork", quietly = TRUE) || !requireNamespace("htmlwidgets", quietly = TRUE)) {
+            warning("Install 'visNetwork' and 'htmlwidgets' for interactive HTML plotting.")
+          } else {
+            # --- ADJUSTMENT: Build Interactive Plot instead of static ggraph
+            nodes_df <- data.frame(
+              id = igraph::V(g)$name,
+              label = igraph::V(g)$name,
+              group = igraph::V(g)$type,
+              level = igraph::V(g)$layer, # Hierarchical layering
+              title = paste0("<p><b>Type:</b> ", igraph::V(g)$type, "<br><b>ID:</b> ", igraph::V(g)$name, "</p>"), # Hover tooltip
+              stringsAsFactors = FALSE
+            )
 
-      ggplot2::ggsave(filename = gsub(".csv", ".pdf", out_path), plot = p, width = plot_width, height = plot_height, device = cairo_pdf)
-      ggplot2::ggsave(filename = gsub(".csv", ".png", out_path), plot = p, width = plot_width, height = plot_height, dpi = plot_dpi, bg = "white")
-    }, error = function(e) warning("Visualization skipped: ", e$message))
+            shape_map <- c("Microbe" = "triangle", "Pathway" = "dot", "Metabolite" = "square")
+            nodes_df$shape <- shape_map[nodes_df$group]
+
+            # Map colors using the user's provided palette
+            color_map <- c("Microbe" = "#D55E00", "Pathway" = "#0072B2", "Metabolite" = "#009E73")
+            nodes_df$color <- color_map[nodes_df$group]
+
+            edges_df <- data.frame(
+              from = edges$Feature1,
+              to = edges$Feature2,
+              value = edges$edge_score, # Scales edge thickness
+              title = paste0("<p><b>Score:</b> ", round(edges$edge_score, 4), "</p>"), # Hover tooltip
+              color = "rgba(200, 200, 200, 0.4)" # Semi-transparent light gray
+            )
+
+            # Build Plot (Dark Academic Presentation Theme)
+            vis_plot <- visNetwork::visNetwork(
+              nodes_df, edges_df,
+              width = "100%", height = "900px",
+              main = list(text = "Multi-Layered Multi-Omics Network", style = "color: white; font-family: sans-serif;")
+            ) |>
+              visNetwork::visNodes(
+                font = list(color = "white", size = 20, face = "sans-serif"),
+                borderWidth = 1.5,
+                borderWidthSelected = 4,
+                scaling = list(min = 10, max = 30)
+              ) |>
+              visNetwork::visEdges(smooth = list(enabled = TRUE, type = "continuous")) |>
+              visNetwork::visOptions(
+                highlightNearest = list(enabled = TRUE, degree = 1, hover = TRUE), # Highlights connected nodes on click
+                nodesIdSelection = list(enabled = TRUE, style = "width: 200px; background: #333; color: white;"), # Dropdown search
+                selectedBy = list(variable = "group", style = "width: 200px; background: #333; color: white;") # Filter by omic layer
+              ) |>
+              visNetwork::visInteraction(navigationButtons = TRUE, dragNodes = TRUE, dragView = TRUE, zoomView = TRUE) |>
+              visNetwork::visPhysics(stabilization = TRUE, barnesHut = list(gravitationalConstant = -6000, centralGravity = 0.3)) |>
+              visNetwork::visExport(type = "png", name = paste0("network_", tools::file_path_sans_ext(basename(gsea_file))), label = "Save Current View as PNG")
+
+            if (layout_method == "sugiyama") {
+              vis_plot <- vis_plot |> visNetwork::visHierarchicalLayout(direction = "UD", levelSeparation = 300, nodeSpacing = 150)
+            }
+
+            vis_plot$x$background <- "#121212"
+
+            # Save Self-Contained HTML
+            html_path <- file.path(output_dir, paste0("interactive_mln_", tools::file_path_sans_ext(basename(gsea_file)), ".html"))
+            htmlwidgets::saveWidget(vis_plot, file = html_path, selfcontained = TRUE, background = "#121212")
+            message("  Saved Interactive HTML visualization to: ", html_path)
+          }
+        },
+        error = function(e) warning("Interactive visualization failed: ", e$message)
+      )
+    }
   }
-  out_path
+  return(out_path)
 }

@@ -2,15 +2,13 @@
 
 #' Internal helper function to read CSV or TSV files
 #'
-#' This function provides a flexible way to read data from either
-#' a comma-separated values (CSV) file or a tab-separated values (TSV) file.
-#' It acts as a wrapper around `read.csv` and `read.delim` from base R.
+#' @details
+#' Uses high-performance `data.table::fread` to read massive omics datasets
+#' significantly faster than base R, returning a standard data.frame.
 #'
 #' @param file_path A character string specifying the path to the input file.
-#' @param file_type A character string indicating the file type. Must be either
-#'   "csv" (for comma-separated values) or "tsv" (for tab-separated values).
-#' @param ... Additional arguments to pass to `read.csv` or `read.delim`
-#'   (e.g., `header`, `row.names`, `stringsAsFactors`).
+#' @param file_type A character string indicating the file type ("csv" or "tsv").
+#' @param ... Additional arguments to pass to `data.table::fread`.
 #' @return A data frame containing the data from the specified file.
 #' @keywords internal
 read_input_file <- function(file_path, file_type = c("csv", "tsv"), ...) {
@@ -20,12 +18,14 @@ read_input_file <- function(file_path, file_type = c("csv", "tsv"), ...) {
     stop(paste("File not found:", file_path))
   }
 
-  if (file_type == "csv") {
-    data <- read.csv(file_path, ...)
-  } else if (file_type == "tsv") {
-    data <- read.delim(file_path, ...)
-  } else {
-    stop("Invalid file_type. Must be 'csv' or 'tsv'.")
+  if (!requireNamespace("data.table", quietly = TRUE)) {
+    stop("The 'data.table' package is required for fast file I/O. Please install it.")
   }
-  data
+
+  sep_char <- if (file_type == "csv") "," else "\t"
+
+  # fread automatically handles large files efficiently
+  data <- data.table::fread(file_path, sep = sep_char, data.table = FALSE, ...)
+
+  return(data)
 }
