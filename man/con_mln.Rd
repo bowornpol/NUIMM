@@ -44,3 +44,7 @@ con_mln(
 \description{
 Multi-layered Network Construction (End-to-End)
 }
+\details{
+Orchestrates the construction of a multi-layered network by standardizing inputs,
+executing the layer-building functions (PPN, MPN, PMN), and triggering integration.
+}

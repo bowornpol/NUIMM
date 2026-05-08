@@ -1,4 +1,9 @@
 #' Multi-layered Network Construction (End-to-End)
+#'
+#' @details
+#' Orchestrates the construction of a multi-layered network by standardizing inputs,
+#' executing the layer-building functions (PPN, MPN, PMN), and triggering integration.
+#'
 #' @export
 con_mln <- function(
   gene_abun_file, path_abun_file, path_con_file, met_con_file, metadata_file,
@@ -25,43 +30,57 @@ con_mln <- function(
   ppn_jaccard_method <- match.arg(ppn_jaccard_method)
 
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
-  if (!requireNamespace("data.table", quietly = TRUE)) stop("Install 'data.table' for rapid preprocessing.")
 
   message("--- Preprocessing Data (Format: ", format, ") ---")
 
   processed_contrib_file <- file.path(output_dir, "processed_contribution.csv")
   taxonomy_file_to_pass <- NULL
 
-  # --- FAST DATA.TABLE PREPROCESSING ---
+  # --- BULLETPROOF PREPROCESSING ---
   if (format == "universal") {
-    df <- data.table::as.data.table(read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE))
+    df <- read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE)
     required <- c("SampleID", "PathwayID", "TaxonID", "contribution")
     if (!all(required %in% colnames(df))) stop("Universal format requires columns: ", paste(required, collapse = ", "))
 
-    data.table::setnames(df, old = c("contribution", "PathwayID", "TaxonID"), new = c("taxon_function_abun", "FunctionID", "FeatureID"), skip_absent = TRUE)
-    df[, TaxonID := FeatureID]
-    data.table::fwrite(df, processed_contrib_file)
+    colnames(df)[colnames(df) == "contribution"] <- "taxon_function_abun"
+    colnames(df)[colnames(df) == "PathwayID"] <- "FunctionID"
+    colnames(df)[colnames(df) == "TaxonID"] <- "FeatureID"
+    df$TaxonID <- df$FeatureID
+    write.csv(df, processed_contrib_file, row.names = FALSE)
   } else if (format == "picrust") {
     if (is.null(taxonomy_file)) stop("Taxonomy file is required for PICRUSt format.")
-    contrib <- data.table::as.data.table(read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE))
-    tax <- data.table::as.data.table(read_input_file(taxonomy_file, file_type = "csv", stringsAsFactors = FALSE))
 
+    contrib <- read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE)
+    tax <- read_input_file(taxonomy_file, file_type = "csv", stringsAsFactors = FALSE)
+
+    # Standard merge
     merged <- merge(contrib, tax, by = "FeatureID", all = FALSE)
-    # FIX: Swapped .() for list()
-    final_df <- merged[, list(SampleID, FunctionID = PathwayID, FeatureID, TaxonID, taxon_function_abun)]
-    data.table::fwrite(final_df, processed_contrib_file)
+
+    # Standard subsetting using character vectors (Immune to scoping bugs)
+    keep_cols <- c("SampleID", "PathwayID", "FeatureID", "TaxonID", "taxon_function_abun")
+    if (!all(keep_cols %in% colnames(merged))) {
+      stop("Missing required columns after taxonomy merge. Check exact spelling.")
+    }
+
+    final_df <- merged[, keep_cols]
+    colnames(final_df)[colnames(final_df) == "PathwayID"] <- "FunctionID"
+
+    write.csv(final_df, processed_contrib_file, row.names = FALSE)
   } else if (format == "humann") {
-    df <- data.table::as.data.table(read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE, check.names = FALSE))
+    df <- read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE, check.names = FALSE)
     col1_name <- colnames(df)[1]
+    sample_cols <- colnames(df)[-1]
 
-    long_df <- data.table::melt(df, id.vars = col1_name, variable.name = "SampleID", value.name = "taxon_function_abun")
-    long_df <- long_df[grepl("\\|", get(col1_name))]
-    long_df[, c("FunctionID", "FeatureID") := data.table::tstrsplit(get(col1_name), "\\|", keep = 1:2)]
-    long_df[, TaxonID := FeatureID]
+    long_df <- tidyr::pivot_longer(df, cols = dplyr::all_of(sample_cols), names_to = "SampleID", values_to = "taxon_function_abun")
+    long_df <- long_df[grepl("\\|", long_df[[col1_name]]), ]
 
-    # FIX: Swapped .() for list()
-    final_df <- long_df[, list(SampleID, FunctionID, FeatureID, TaxonID, taxon_function_abun)]
-    data.table::fwrite(final_df, processed_contrib_file)
+    split_data <- stringr::str_split_fixed(long_df[[col1_name]], "\\|", 2)
+    long_df$FunctionID <- split_data[, 1]
+    long_df$FeatureID <- split_data[, 2]
+    long_df$TaxonID <- long_df$FeatureID
+
+    final_df <- long_df[, c("SampleID", "FunctionID", "FeatureID", "TaxonID", "taxon_function_abun")]
+    write.csv(final_df, processed_contrib_file, row.names = FALSE)
   }
 
   ppn_dir <- file.path(output_dir, "ppn_output")
