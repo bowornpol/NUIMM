@@ -1,3 +1,5 @@
+utils::globalVariables(c("coef", "pval", "feature", "ID", "core_enrichment", "gene", "term"))
+
 #' Internal Pathway-Pathway Network Helper
 #'
 #' @details
@@ -19,9 +21,6 @@
 #' @param comparisons_list Optional list of pairwise group comparisons.
 #' @return List with `gsea_paths` and `jaccard_paths` character vectors.
 #' @keywords internal
-#' @name con_ppn_int
-utils::globalVariables(c("coef", "pval", "feature", "ID", "core_enrichment", "gene", "term"))
-
 con_ppn_int <- function(
   gene_abun_file, metadata_file, map_file, output_dir,
   ppn_da_method = c("deseq2", "edger", "maaslin2", "simple"),

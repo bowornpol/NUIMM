@@ -3,6 +3,22 @@
 \name{con_ppn_int}
 \alias{con_ppn_int}
 \title{Internal Pathway-Pathway Network Helper}
+\usage{
+con_ppn_int(
+  gene_abun_file,
+  metadata_file,
+  map_file,
+  output_dir,
+  ppn_da_method = c("deseq2", "edger", "maaslin2", "simple"),
+  ppn_map_database = c("kegg", "metacyc", "custom"),
+  ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
+  ppn_p_adjust_method = "fdr",
+  ppn_pvalue_cutoff = 0.05,
+  ppn_jaccard_cutoff = 0.2,
+  ppn_jaccard_method = c("gsea_core", "map_file"),
+  comparisons_list = NULL
+)
+}
 \arguments{
 \item{gene_abun_file}{Path to gene/KO abundance table.}
 

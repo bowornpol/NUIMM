@@ -1,3 +1,5 @@
+utils::globalVariables(c("MCC_score", "mcc_score", "name"))
+
 #' Hub Identification using Maximal Clique Centrality (MCC)
 #'
 #' @details
@@ -13,9 +15,6 @@
 #' @param visualize Logical. If TRUE, generates an interactive HTML network. Defaults to TRUE.
 #' @return Invisible NULL. Results are written to `output_directory`.
 #' @export
-#' @name iden_hub
-utils::globalVariables(c("MCC_score", "mcc_score", "name"))
-
 iden_hub <- function(
   multi_layered_network_file,
   output_directory,

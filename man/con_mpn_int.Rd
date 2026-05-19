@@ -3,6 +3,15 @@
 \name{con_mpn_int}
 \alias{con_mpn_int}
 \title{Internal Microbe-Pathway Network Helper}
+\usage{
+con_mpn_int(
+  path_con_file,
+  metadata_file,
+  taxonomy_file = NULL,
+  output_dir,
+  mpn_filtering = "top10\%"
+)
+}
 \description{
 Internal Microbe-Pathway Network Helper
 }

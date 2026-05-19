@@ -3,6 +3,16 @@
 \name{node_prior}
 \alias{node_prior}
 \title{Node Prioritization using Laplacian Heat Diffusion (LHD)}
+\usage{
+node_prior(
+  multi_layered_network_file,
+  output_directory,
+  time_step_interval = 0.01,
+  stabilization_threshold = 1e-04,
+  stabilization_window_size = 10,
+  visualize = TRUE
+)
+}
 \arguments{
 \item{multi_layered_network_file}{Path to the multi-layered network CSV/TSV.}
 

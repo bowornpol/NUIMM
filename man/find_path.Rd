@@ -3,6 +3,15 @@
 \name{find_path}
 \alias{find_path}
 \title{Pathfinding using Dijkstra's algorithm}
+\usage{
+find_path(
+  multi_layered_network_file,
+  source_node = NULL,
+  target_node = NULL,
+  output_directory,
+  visualize = TRUE
+)
+}
 \arguments{
 \item{multi_layered_network_file}{Path to input CSV/TSV.}
 
