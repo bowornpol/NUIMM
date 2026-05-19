@@ -3,6 +3,14 @@
 \name{iden_hub}
 \alias{iden_hub}
 \title{Hub Identification using Maximal Clique Centrality (MCC)}
+\usage{
+iden_hub(
+  multi_layered_network_file,
+  output_directory,
+  top_n_hubs = 5,
+  visualize = TRUE
+)
+}
 \arguments{
 \item{multi_layered_network_file}{Path to the multi-layered network CSV/TSV
 (output from `con_mln`). Must contain 'from'/'to' or 'Feature1'/'Feature2' columns.}

@@ -1,3 +1,23 @@
+utils::globalVariables(c("type", "weight", "name", "edge_score", "layer"))
+
+# --- Helper to Clean Taxonomic Name ---
+clean_taxonomy <- function(tax_string) {
+  if (is.na(tax_string) || tax_string == "") {
+    return(tax_string)
+  }
+  if (grepl("g__", tax_string)) {
+    parts <- unlist(strsplit(tax_string, ";\\s*|;"))
+    g_part <- parts[grepl("^g__", parts)][1]
+    s_part <- parts[grepl("^s__", parts)][1]
+    if (!is.na(s_part) && nchar(s_part) > 3) {
+      return(paste(g_part, s_part, sep = " "))
+    } else if (!is.na(g_part)) {
+      return(g_part)
+    }
+  }
+  return(tax_string)
+}
+
 #' Internal Multi-Layered Network Assembly and Visualization
 #'
 #' @details
@@ -20,27 +40,6 @@
 #' @param plot_dpi Output image resolution (DPI).
 #' @return Path to the output HTML or CSV file.
 #' @keywords internal
-#' @name con_mln_int
-utils::globalVariables(c("type", "weight", "name", "edge_score", "layer"))
-
-# --- Helper to Clean Taxonomic Name ---
-clean_taxonomy <- function(tax_string) {
-  if (is.na(tax_string) || tax_string == "") {
-    return(tax_string)
-  }
-  if (grepl("g__", tax_string)) {
-    parts <- unlist(strsplit(tax_string, ";\\s*|;"))
-    g_part <- parts[grepl("^g__", parts)][1]
-    s_part <- parts[grepl("^s__", parts)][1]
-    if (!is.na(s_part) && nchar(s_part) > 3) {
-      return(paste(g_part, s_part, sep = " "))
-    } else if (!is.na(g_part)) {
-      return(g_part)
-    }
-  }
-  return(tax_string)
-}
-
 con_mln_int <- function(
   gsea_file, mpn_file, ppn_file, pmn_file, output_dir,
   visualize, layout_method, node_colors, node_shapes, base_node_size, plot_width, plot_height, plot_dpi

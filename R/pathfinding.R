@@ -1,3 +1,5 @@
+utils::globalVariables(c("from", "to", "edge_score", "x", "y", "xend", "yend", "type", "name", "is_path"))
+
 #' Pathfinding using Dijkstra's algorithm
 #'
 #' @details
@@ -11,9 +13,6 @@
 #' @param visualize Logical. If TRUE, generates interactive HTML. Defaults to TRUE.
 #' @return Invisible NULL. Results are written to `output_directory`.
 #' @export
-#' @name find_path
-utils::globalVariables(c("from", "to", "edge_score", "x", "y", "xend", "yend", "type", "name", "is_path"))
-
 find_path <- function(
   multi_layered_network_file,
   source_node = NULL,

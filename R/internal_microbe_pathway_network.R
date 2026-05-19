@@ -1,7 +1,7 @@
+utils::globalVariables(c("relative_contribution", "FunctionID", "taxon_function_abun", "total_abun", "TaxonID"))
+
 #' Internal Microbe-Pathway Network Helper
 #' @keywords internal
-#' @name con_mpn_int
-utils::globalVariables(c("relative_contribution", "FunctionID", "taxon_function_abun", "total_abun", "TaxonID"))
 
 con_mpn_int <- function(
   path_con_file, metadata_file, taxonomy_file = NULL, output_dir,

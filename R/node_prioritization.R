@@ -1,3 +1,8 @@
+utils::globalVariables(c(
+  "edge_type", "Feature2", "Feature1", "from", "to",
+  "Node_A", "Node_B", "edge_score", "Heat_score", "Time", "Correlation", "type"
+))
+
 #' Node Prioritization using Laplacian Heat Diffusion (LHD)
 #'
 #' @details
@@ -13,12 +18,6 @@
 #' @param visualize Logical. If TRUE, generates interactive HTML.
 #' @return Invisible NULL.
 #' @export
-#' @name node_prior
-utils::globalVariables(c(
-  "edge_type", "Feature2", "Feature1", "from", "to",
-  "Node_A", "Node_B", "edge_score", "Heat_score", "Time", "Correlation", "type"
-))
-
 node_prior <- function(
   multi_layered_network_file,
   output_directory,

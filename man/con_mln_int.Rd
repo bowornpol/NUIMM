@@ -3,6 +3,23 @@
 \name{con_mln_int}
 \alias{con_mln_int}
 \title{Internal Multi-Layered Network Assembly and Visualization}
+\usage{
+con_mln_int(
+  gsea_file,
+  mpn_file,
+  ppn_file,
+  pmn_file,
+  output_dir,
+  visualize,
+  layout_method,
+  node_colors,
+  node_shapes,
+  base_node_size,
+  plot_width,
+  plot_height,
+  plot_dpi
+)
+}
 \arguments{
 \item{gsea_file}{Path to GSEA results CSV.}
 
