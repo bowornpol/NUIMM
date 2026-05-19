@@ -423,7 +423,11 @@ node_prior <- function(
         }
 
         var result = [];
-        for(var i=0;i<n;i++) result.push({id:nodeIds[i], heat:H[i], group:realNodes[i].group, label:realNodes[i].label});
+        for(var i=0;i<n;i++) {
+          var nid = nodeIds[i];
+          if(filterMet && metIds[nid] && !seeds.some(function(s){return s===nid;})) continue;
+          result.push({id:nid, heat:H[i], group:realNodes[i].group, label:realNodes[i].label});
+        }
         result.sort(function(a,b){return b.heat-a.heat;});
 
         return {scores:result, corrs:corrs, times:times, stabT:stabT, seedLabels:seeds.map(function(s){
