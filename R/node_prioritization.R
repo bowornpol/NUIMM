@@ -1,190 +1,613 @@
-#' Node Prioritization using Laplacian Heat Diffusion (LHD) algorithm
-#'
-#' This function implements Laplacian Heat Diffusion (LHD) algorithm
-#' on a multi-layered network to prioritize nodes based on their
-#' association from specific metabolite seed nodes.
+#' Node Prioritization using Laplacian Heat Diffusion (LHD)
 #'
 #' @details
-#' The process involves:
-#' 1. Loading the integrated multi-layered network data.
-#' 2. Identifying all unique metabolite nodes, which serve as seed points for diffusion.
-#' 3. For each metabolite seed:
-#'    a. Optionally filters the network to exclude all other metabolite nodes and their connected edges
-#'       if `filter_other_metabolite_edges` is `TRUE`.
-#'    b. Converts edge scores to absolute values and constructs an `igraph` object.
-#'    c. Computes the graph Laplacian matrix.
-#'    d. Initializes a heat vector with heat concentrated on the current seed node.
-#'    e. Simulates heat diffusion over time steps using matrix exponentials.
-#'    f. Determines the stabilization time by monitoring the Spearman correlation
-#'       between successive heat vectors.
-#'    g. Calculates final heat scores for all nodes at the stabilization time.
-#'    h. Saves the heat scores and the correlation-over-time data to CSV files.
-#'    i. Generates and saves a ggplot2 visualization of the Spearman correlation
-#'       over time, indicating the stabilization point.
+#' Implements LHD on a multi-layered network to prioritize nodes.
+#' Generates an interactive HTML with client-side heat diffusion,
+#' seed selection, edge filtering, and subnetwork visualization.
 #'
-#' @param multi_layered_network_file A character string specifying the path to the
-#'    integrated multi-layered network data file (output
-#'    from `con.mln` or `con.mln.all`). Expected columns: 'Feature1',
-#'    'Feature2', 'edge_score' (numeric), and 'edge_type'.
-#' @param output_directory A character string specifying the path to the directory
-#'    where the output CSV files (heat scores, correlation data) and plots (correlation
-#'    plots) will be saved. The directory will be created if it does not exist.
-#' @param file_type A character string indicating the type of input file.
-#'    Must be "csv" (for comma-separated) or "tsv" (for tab-separated).
-#' @param time_step_interval A numeric value representing the interval between
-#'    time steps for the heat diffusion simulation (e.g., 0.01).
-#' @param stabilization_threshold A numeric value defining the threshold for
-#'    determining stabilization. If the absolute difference in Spearman correlation
-#'    between successive heat vectors falls below this threshold for a specified
-#'    window, the process is considered stabilized.
-#' @param stabilization_window_size An integer specifying the number of consecutive
-#'    time steps over which the correlation difference must remain below the
-#'    `stabilization_threshold` for stabilization to be declared.
-#' @param filter_other_metabolite_edges A logical value. If `TRUE`, when a
-#'    metabolite is used as a seed, all other edges connected to *other* metabolite
-#'    nodes (i.e., not the current seed) are excluded from the network for that
-#'    specific diffusion run. If `FALSE`, the full network is used for each seed.
-#' @param visualize Logical. If TRUE, generates stabilization curve and lollipop rank plots. Defaults to TRUE.
-#' @param top_n_plot Integer. Top N nodes to display in the lollipop rank chart.
-#' @param node_colors Named character vector defining plotting colors for node types.
-#' @param plot_width Numeric. Figure width in inches.
-#' @param plot_height Numeric. Figure height in inches.
-#' @param plot_dpi Numeric. Output image resolution (DPI).
-#' @return The function's primary output consists of multiple
-#'    CSV files (heat scores and correlation data) and JPG plots (correlation plots),
-#'    saved to the specified `output_directory`, one set for each metabolite seed node.
-#' @references
-#' Carlin DE, Demchak B, Pratt D, Sage E, Ideker T. Network propagation in the cytoscape cyberinfrastructure. PLoS computational biology. 2017;13(10):e1005598.
+#' @param multi_layered_network_file Path to the multi-layered network CSV/TSV.
+#' @param output_directory Path to save results.
+#' @param time_step_interval Numeric. Interval between time steps (default 0.01).
+#' @param stabilization_threshold Numeric. Threshold for stabilization detection.
+#' @param stabilization_window_size Integer. Window size for stabilization check.
+#' @param visualize Logical. If TRUE, generates interactive HTML.
+#' @return Invisible NULL.
 #' @export
-utils::globalVariables(c("edge_type", "Feature2", "Feature1", "from", "to", "Node_A", "Node_B", "edge_score", "Heat_score", "Time", "Correlation", "type"))
+#' @name node_prior
+utils::globalVariables(c(
+  "edge_type", "Feature2", "Feature1", "from", "to",
+  "Node_A", "Node_B", "edge_score", "Heat_score", "Time", "Correlation", "type"
+))
 
 node_prior <- function(
   multi_layered_network_file,
   output_directory,
-  file_type = c("csv", "tsv"),
   time_step_interval = 0.01,
   stabilization_threshold = 0.0001,
   stabilization_window_size = 10,
-  filter_other_metabolite_edges,
-  visualize = TRUE,
-  top_n_plot = 20, 
-  node_colors = c("Microbe" = "#D55E00", "Pathway" = "#0072B2", "Metabolite" = "#009E73"),
-  plot_width = 10, 
-  plot_height = 8, 
-  plot_dpi = 600
+  visualize = TRUE
 ) {
-  file_type <- match.arg(file_type)
   message("Starting node prioritization using LHD algorithm.")
 
-  if (!dir.exists(output_directory)) {
-    dir.create(output_directory, recursive = TRUE)
-    message("Created output directory: ", output_directory)
-  }
+  if (!dir.exists(output_directory)) dir.create(output_directory, recursive = TRUE)
 
   input_file_base_name <- tools::file_path_sans_ext(basename(multi_layered_network_file))
   cleaned_input_file_name <- gsub("[^A-Za-z0-9_]", "", input_file_base_name)
 
-  message("\n1. Loading multi-layered network from: ", multi_layered_network_file)
-  if (!file.exists(multi_layered_network_file)) stop("Input network file not found.")
+  message("\n1. Loading network from: ", multi_layered_network_file)
+  if (!file.exists(multi_layered_network_file)) stop("File not found.")
 
-  combined_data_full <- read_input_file(multi_layered_network_file, file_type = file_type, stringsAsFactors = FALSE)
+  network_data <- read_input_file(multi_layered_network_file, stringsAsFactors = FALSE)
 
-  required_cols_network <- c("Feature1", "Feature2", "edge_score", "edge_type")
-  if (!all(required_cols_network %in% colnames(combined_data_full))) {
-    stop("Input network file missing required columns.")
+  if (all(c("from", "to") %in% colnames(network_data))) {
+    source_col <- "from"
+    target_col <- "to"
+  } else if (all(c("Feature1", "Feature2") %in% colnames(network_data))) {
+    source_col <- "Feature1"
+    target_col <- "Feature2"
+  } else {
+    stop("Network file must have 'from'/'to' or 'Feature1'/'Feature2' columns.")
   }
 
-  all_metabolite_nodes <- as.character(unique(dplyr::pull(dplyr::filter(combined_data_full, edge_type == "Pathway-Metabolite"), Feature2)))
+  edge_score_col <- if ("edge_score" %in% colnames(network_data)) "edge_score" else if ("value" %in% colnames(network_data)) "value" else NULL
 
-  if (length(all_metabolite_nodes) == 0) stop("No metabolite nodes found in the network.")
-  
-  H_vector_func_fast <- function(t_val, U, lambda, U_T_H0) { as.vector(U %*% (exp(-lambda * t_val) * U_T_H0)) }
+  edges_df <- data.frame(
+    from = network_data[[source_col]],
+    to = network_data[[target_col]],
+    stringsAsFactors = FALSE
+  )
+  if (!is.null(edge_score_col)) {
+    edges_df$value <- abs(as.numeric(network_data[[edge_score_col]]))
+    edges_df$title <- paste0("<div style='padding:10px; font-family:sans-serif;'><b>Value:</b> ", round(as.numeric(network_data[[edge_score_col]]), 4), "</div>")
+  } else {
+    edges_df$title <- "<div style='padding:10px; font-family:sans-serif;'><b>Value:</b> 1</div>"
+  }
+  edges_df$edge_weight <- if (!is.null(edge_score_col)) abs(as.numeric(network_data[[edge_score_col]])) else rep(1, nrow(edges_df))
 
-  message("\nPerforming heat diffusion for each metabolite seed node...")
-  for (seed_metabolite_id in all_metabolite_nodes) {
-    message("  Processing seed metabolite: '", seed_metabolite_id, "'")
+  unique_nodes <- unique(c(edges_df$from, edges_df$to))
 
-    if (filter_other_metabolite_edges) {
-      exclude <- setdiff(all_metabolite_nodes, seed_metabolite_id)
-      current_combined_data <- dplyr::filter(combined_data_full, !(Feature1 %in% exclude) & !(Feature2 %in% exclude))
-      if (!seed_metabolite_id %in% unique(c(current_combined_data$Feature1, current_combined_data$Feature2))) next
+  nodes_df <- data.frame(
+    id = unique_nodes,
+    label = sapply(unique_nodes, function(x) {
+      if (grepl("d__|p__|c__|o__|f__|g__|s__|Bacteria", x)) clean_taxonomy(x) else x
+    }),
+    title = paste0("<div style='padding:10px; font-family:sans-serif;'><b>ID:</b> ", unique_nodes, "</div>"),
+    stringsAsFactors = FALSE
+  )
+
+  nodes_df$group <- sapply(nodes_df$id, function(x) {
+    if (grepl("d__|p__|c__|o__|f__|g__|s__|Bacteria", x)) {
+      "Microbe"
+    } else if (grepl("^ko[0-9]+|PATH", x)) {
+      "Pathway"
     } else {
-      current_combined_data <- combined_data_full
+      "Metabolite"
     }
+  })
+  nodes_df$size <- c("Microbe" = 20, "Pathway" = 30, "Metabolite" = 40)[nodes_df$group]
 
-    current_combined_data$edge_score <- abs(current_combined_data$edge_score)
-    all_nodes <- unique(c(current_combined_data$Feature1, current_combined_data$Feature2))
-    
-    g_current <- igraph::graph_from_data_frame(d = current_combined_data[, c("Feature1", "Feature2")], directed = FALSE, vertices = all_nodes)
-    
-    df_edges <- dplyr::mutate(dplyr::rowwise(current_combined_data), Node_A = min(Feature1, Feature2), Node_B = max(Feature1, Feature2))
-    g_edges <- dplyr::mutate(dplyr::rowwise(igraph::as_data_frame(g_current, what = "edges")), Node_A = min(from, to), Node_B = max(from, to))
-    igraph::E(g_current)$weight <- df_edges$edge_score[match(paste0(g_edges$Node_A, "_", g_edges$Node_B), paste0(df_edges$Node_A, "_", df_edges$Node_B))]
-    igraph::E(g_current)$weight[is.na(igraph::E(g_current)$weight)] <- 0
+  nodes_df$x <- 0
+  nodes_df$y <- 0
+  idx_mic <- which(nodes_df$group == "Microbe")
+  idx_path <- which(nodes_df$group == "Pathway")
+  idx_met <- which(nodes_df$group == "Metabolite")
 
-    L_current <- as.matrix(igraph::laplacian_matrix(g_current, weights = igraph::E(g_current)$weight))
-    eig <- eigen(L_current, symmetric = TRUE)
-    
-    H_0 <- numeric(igraph::vcount(g_current))
-    names(H_0) <- igraph::V(g_current)$name
-    H_0[which(names(H_0) == seed_metabolite_id)] <- 1.0
-    U_T_H0 <- t(eig$vectors) %*% H_0
+  r_mic <- 200 + (length(idx_mic) * 15)
+  r_path <- 150 + (length(idx_path) * 20)
+  r_met <- 100 + (length(idx_met) * 25)
+  x_mic <- -(r_mic + r_path + 500)
+  x_path <- 0
+  x_met <- (r_path + r_met + 500)
 
-    t_seq <- seq(0, 1, by = time_step_interval)
-    h_mat <- sapply(t_seq, function(t) H_vector_func_fast(t, eig$vectors, eig$values, U_T_H0))
-    corrs <- sapply(1:(ncol(h_mat)-1), function(i) stats::cor(h_mat[, i+1], h_mat[, i], method = "spearman"))
-    
-    stab_t <- t_seq[length(t_seq)]
-    for (i in seq_len(length(corrs) - stabilization_window_size + 1)) {
-      if (all(abs(diff(corrs[i:(i + stabilization_window_size - 1)])) < stabilization_threshold)) {
-        stab_t <- t_seq[i + 1]; break
-      }
-    }
-
-    message("    Stabilization time for '", seed_metabolite_id, "': t = ", round(stab_t, 4))
-    final_heat <- H_vector_func_fast(stab_t, eig$vectors, eig$values, U_T_H0)
-    output_df <- dplyr::arrange(data.frame(Node = names(H_0), Heat_score = final_heat, stringsAsFactors = FALSE), dplyr::desc(Heat_score))
-    
-    cln_seed <- gsub("[^A-Za-z0-9_]", "", seed_metabolite_id)
-    write.csv(output_df, file.path(output_directory, paste0("heat_scores_", cln_seed, ".csv")), row.names = FALSE)
-
-    if (visualize) {
-      library(ggplot2)
-      
-      corr_df <- data.frame(Time = t_seq[-1], Correlation = corrs)
-      p1 <- ggplot2::ggplot(corr_df, ggplot2::aes(x = Time, y = Correlation)) +
-        ggplot2::geom_line(linewidth = 1, color = "black") +
-        ggplot2::geom_vline(xintercept = stab_t, linetype = "dashed", color = "#D55E00", linewidth = 1) +
-        ggplot2::annotate("text", x = stab_t, y = min(corrs), label = paste("Stab t =", stab_t), color = "#D55E00", hjust = -0.1, family = "sans") +
-        ggplot2::labs(x = "Time Step", y = "Spearman Correlation") +
-        ggplot2::theme_classic(base_family = "sans") +
-        ggplot2::theme(axis.title = ggplot2::element_text(face = "bold"), plot.margin = ggplot2::margin(10, 10, 10, 10))
-      
-      ggplot2::ggsave(file.path(output_directory, paste0("lhd_curve_", cln_seed, ".pdf")), plot = p1, width = 6, height = 4, device = cairo_pdf)
-
-      top_df <- head(output_df, top_n_plot)
-      top_df$type <- sapply(top_df$Node, function(x) {
-        if (grepl("d__|p__|c__|o__|f__|g__|s__|Bacteria", x)) "Microbe" else if (grepl("^ko[0-9]+", x)) "Pathway" else "Metabolite"
-      })
-      top_df$type <- factor(top_df$type, levels = c("Microbe", "Pathway", "Metabolite"))
-
-      p2 <- ggplot2::ggplot(top_df, ggplot2::aes(x = reorder(Node, Heat_score), y = Heat_score, color = type)) +
-        ggplot2::geom_segment(ggplot2::aes(xend = Node, yend = 0), linewidth = 1.2) +
-        ggplot2::geom_point(size = 4) +
-        ggplot2::scale_color_manual(name = "Node Type", values = node_colors) +
-        ggplot2::coord_flip() +
-        ggplot2::labs(x = "Network Node", y = "Diffusion Heat Score") +
-        ggplot2::theme_classic(base_family = "sans") +
-        ggplot2::theme(
-          axis.text.y = ggplot2::element_text(size = 10, face = "bold", color = "black"),
-          axis.title = ggplot2::element_text(face = "bold", size = 12),
-          legend.position = "right",
-          plot.margin = ggplot2::margin(10, 10, 10, 10)
-        )
-
-      ggplot2::ggsave(file.path(output_directory, paste0("prioritization_rank_", cln_seed, ".pdf")), plot = p2, width = plot_width, height = plot_height, device = cairo_pdf)
-      ggplot2::ggsave(file.path(output_directory, paste0("prioritization_rank_", cln_seed, ".png")), plot = p2, width = plot_width, height = plot_height, dpi = plot_dpi, bg = "white")
-    }
+  if (length(idx_mic) > 0) {
+    ang <- seq(0, 2 * pi, length.out = length(idx_mic) + 1)[1:length(idx_mic)]
+    nodes_df$x[idx_mic] <- x_mic + r_mic * cos(ang)
+    nodes_df$y[idx_mic] <- r_mic * sin(ang)
   }
+  if (length(idx_path) > 0) {
+    ang <- seq(0, 2 * pi, length.out = length(idx_path) + 1)[1:length(idx_path)]
+    nodes_df$x[idx_path] <- x_path + r_path * cos(ang)
+    nodes_df$y[idx_path] <- r_path * sin(ang)
+  }
+  if (length(idx_met) > 0) {
+    ang <- seq(0, 2 * pi, length.out = length(idx_met) + 1)[1:length(idx_met)]
+    nodes_df$x[idx_met] <- x_met + r_met * cos(ang)
+    nodes_df$y[idx_met] <- r_met * sin(ang)
+  }
+
+  max_y <- max(nodes_df$y, na.rm = TRUE)
+  legend_y <- max_y + 400
+  legend_nodes <- data.frame(
+    id = c("LEG_MIC", "LEG_PATH", "LEG_MET"),
+    label = c("Microbe", "Pathway", "Metabolite"),
+    title = c("", "", ""),
+    group = c("Microbe", "Pathway", "Metabolite"),
+    size = c(60, 60, 60),
+    x = c(-300, 0, 300), y = c(legend_y, legend_y, legend_y),
+    stringsAsFactors = FALSE
+  )
+  nodes_df <- rbind(nodes_df, legend_nodes)
+
+  if (visualize) {
+    if (!requireNamespace("visNetwork", quietly = TRUE) || !requireNamespace("htmlwidgets", quietly = TRUE)) {
+      stop("Install 'visNetwork' and 'htmlwidgets' for visualize=TRUE.")
+    }
+
+    js_custom_panel <- paste0("
+    function(el, x, data) {
+      document.body.style.overflow = 'hidden';
+      var wrapper = document.createElement('div');
+      wrapper.style.cssText = 'position:absolute;left:20px;bottom:20px;z-index:99999;font-family:sans-serif;';
+
+      var toggleBtn = document.createElement('button');
+      toggleBtn.innerHTML = 'Hide Controls';
+      toggleBtn.style.cssText = 'padding:8px 16px;background:#f1f5f9;color:#0f172a;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-weight:bold;display:block;margin-bottom:10px;box-shadow:0 4px 6px rgba(0,0,0,0.1);';
+      wrapper.appendChild(toggleBtn);
+
+      var panel = document.createElement('div');
+      panel.style.cssText = 'background:rgba(255,255,255,0.95);padding:15px;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);max-height:85vh;overflow-y:auto;';
+
+      var isPanelOpen = true;
+      toggleBtn.onclick = function() {
+        isPanelOpen = !isPanelOpen;
+        panel.style.display = isPanelOpen ? 'block' : 'none';
+        toggleBtn.innerHTML = isPanelOpen ? 'Hide Controls' : 'Customize Network';
+      };
+
+      function addHTML(parent, htmlString) {
+          var temp = document.createElement('div');
+          temp.innerHTML = htmlString;
+          while (temp.firstChild) {
+              parent.appendChild(temp.firstChild);
+          }
+      }
+
+      addHTML(panel, '<div style=\"font-size:14px;color:#475569;margin-bottom:10px\"><b>Tip:</b> Scroll to zoom. Drag nodes to perfect layout.<hr style=\"margin:10px 0;border:0;border-top:1px solid #e2e8f0\"></div>');
+      addHTML(panel, '<div style=\"font-size:14px;color:#0f172a;margin-bottom:10px\"><b>Node Prioritization Analysis</b></div>');
+
+      var visEngine = this.network;
+      var nodesDS = visEngine.body.data.nodes;
+      var edgesDS = visEngine.body.data.edges;
+      var allNodes = nodesDS.get();
+      var allEdges = edgesDS.get();
+
+      var initialCoords = {};
+      allNodes.forEach(function(n) { initialCoords[n.id] = {x:n.x, y:n.y}; });
+
+      var metNodes = allNodes.filter(function(n){ return n.group === 'Metabolite' && n.id.indexOf('LEG_') !== 0; });
+      metNodes.sort(function(a,b){ return a.label.localeCompare(b.label); });
+
+      // --- Seed Selection (Checkboxes) ---
+      addHTML(panel, '<div style=\"font-size:13px;margin-bottom:4px\"><b>Select Seed Node (Metabolite):</b></div>');
+      var seedContainer = document.createElement('div');
+      seedContainer.style.cssText = 'width:100%;height:100px;overflow-y:auto;border:1px solid #cbd5e1;padding:4px;margin-bottom:8px;font-size:12px;background:#fff;';
+      var seedCheckboxes = [];
+      metNodes.forEach(function(n) {
+        var lbl = document.createElement('label');
+        lbl.style.cssText = 'display:block; cursor:pointer; margin-bottom:2px;';
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = n.id;
+        cb.style.marginRight = '5px';
+        seedCheckboxes.push(cb);
+        lbl.appendChild(cb);
+        lbl.appendChild(document.createTextNode(n.label));
+        seedContainer.appendChild(lbl);
+      });
+      panel.appendChild(seedContainer);
+
+      // --- Filter Toggle ---
+      var filterWrap = document.createElement('div');
+      filterWrap.style.cssText = 'font-size:13px;margin-bottom:8px;';
+      filterWrap.innerHTML = '<b>Filter Other Metabolite Edges:</b> ';
+      var filterSel = document.createElement('select');
+      filterSel.style.cssText = 'padding:2px;border-radius:4px;border:1px solid #cbd5e1;';
+      ['YES','NO'].forEach(function(v){ var o=document.createElement('option'); o.value=v; o.text=v; filterSel.appendChild(o); });
+      filterWrap.appendChild(filterSel);
+      panel.appendChild(filterWrap);
+
+      // --- Run / Reset Buttons ---
+      var btnWrap = document.createElement('div');
+      btnWrap.style.cssText = 'display:flex;gap:8px;margin-bottom:10px;';
+      var runBtn = document.createElement('button');
+      runBtn.innerHTML = 'Run Analysis';
+      runBtn.style.cssText = 'padding:6px 12px;cursor:pointer;font-weight:bold;';
+      var resetBtn = document.createElement('button');
+      resetBtn.innerHTML = 'Reset';
+      resetBtn.style.cssText = 'padding:6px 12px;cursor:pointer;font-weight:bold;';
+      btnWrap.appendChild(runBtn);
+      btnWrap.appendChild(resetBtn);
+      panel.appendChild(btnWrap);
+
+      // --- Post-analysis controls (hidden) ---
+      var postWrap = document.createElement('div');
+      postWrap.style.display = 'none';
+
+      addHTML(postWrap, '<hr style=\"margin:10px 0;border:0;border-top:1px solid #e2e8f0\">');
+      addHTML(postWrap, '<div style=\"font-size:13px;margin-bottom:4px\"><b>Show Top % Nodes:</b></div>');
+      var pctSlider = document.createElement('input');
+      pctSlider.type = 'range'; pctSlider.min = 1; pctSlider.max = 100; pctSlider.value = 100;
+      pctSlider.style.cssText = 'width:100%;margin-bottom:2px;';
+      postWrap.appendChild(pctSlider);
+      var pctLabel = document.createElement('div');
+      pctLabel.style.cssText = 'font-size:12px;text-align:center;margin-bottom:8px;';
+      pctLabel.innerHTML = '100%';
+      postWrap.appendChild(pctLabel);
+
+      addHTML(postWrap, '<div style=\"font-size:13px;margin-bottom:4px\"><b>Heat Color Tone:</b></div>');
+      var palSel = document.createElement('select');
+      palSel.style.cssText = 'width:100%;padding:2px;border-radius:4px;border:1px solid #cbd5e1;margin-bottom:8px;';
+      ['Plasma','Viridis','Heat','Blues','Reds'].forEach(function(p){ var o=document.createElement('option'); o.value=p; o.text=p; palSel.appendChild(o); });
+      postWrap.appendChild(palSel);
+
+      var legendWrap = document.createElement('div');
+      legendWrap.style.cssText = 'margin-bottom:8px;font-size:12px;';
+      legendWrap.innerHTML = '<div style=\"text-align:center;margin-bottom:5px\"><b>Heat Score</b></div>';
+      var gradBar = document.createElement('div');
+      gradBar.style.cssText = 'height:15px;width:100%;border-radius:4px;border:1px solid #ccc;';
+      legendWrap.appendChild(gradBar);
+      var legLabels = document.createElement('div');
+      legLabels.style.cssText = 'display:flex;justify-content:space-between;margin-top:2px;';
+      var minLbl = document.createElement('span'); minLbl.innerHTML = 'Min';
+      var maxLbl = document.createElement('span'); maxLbl.innerHTML = 'Max';
+      legLabels.appendChild(minLbl); legLabels.appendChild(maxLbl);
+      legendWrap.appendChild(legLabels);
+      postWrap.appendChild(legendWrap);
+
+      // --- Correlation plot canvas ---
+      addHTML(postWrap, '<div style=\"font-size:13px;margin-bottom:4px\"><b>Stabilization Curve</b></div>');
+      var corrCanvas = document.createElement('canvas');
+      corrCanvas.width = 1120; corrCanvas.height = 560;
+      corrCanvas.style.cssText = 'width:100%;height:140px;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:8px;background:#fff;';
+      postWrap.appendChild(corrCanvas);
+      var stabInfo = document.createElement('div');
+      stabInfo.style.cssText = 'font-size:11px;color:#475569;margin-bottom:8px;';
+      postWrap.appendChild(stabInfo);
+
+      panel.appendChild(postWrap);
+
+      // --- Customize Network section ---
+      addHTML(panel, '<hr style=\"margin:10px 0;border:0;border-top:1px solid #e2e8f0\">');
+      addHTML(panel, '<div style=\"font-size:14px;color:#0f172a;margin-bottom:8px\"><b>Customize Network</b></div>');
+
+      var groups = [{name:'Microbe',shape:'triangle'},{name:'Pathway',shape:'dot'},{name:'Metabolite',shape:'square'}];
+      groups.forEach(function(g) {
+        var w = document.createElement('div');
+        w.style.cssText = 'display:flex;align-items:center;margin-bottom:6px;font-size:13px;';
+        var l = document.createElement('div'); l.innerText = g.name+':'; l.style.cssText = 'width:80px;font-weight:bold;'; w.appendChild(l);
+        var ss = document.createElement('select');
+        ['dot','triangle','square','diamond','star','hexagon'].forEach(function(s){ var o=document.createElement('option'); o.value=s; o.text=s; if(s===g.shape) o.selected=true; ss.appendChild(o); });
+        ss.style.cssText = 'padding:2px;border-radius:4px;border:1px solid #cbd5e1;width:120px;'; w.appendChild(ss);
+        panel.appendChild(w);
+        var upd = function(){ var opts={groups:{}}; opts.groups[g.name]={shape:ss.value}; if(visEngine&&visEngine.setOptions) visEngine.setOptions(opts); };
+        ss.addEventListener('change',upd);
+      });
+
+      // --- Save buttons ---
+      var saveNetBtn = document.createElement('button');
+      saveNetBtn.innerHTML = 'Save Network';
+      saveNetBtn.style.cssText = 'margin-top:10px;padding:8px 16px;background:#f1f5f9;color:#0f172a;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-weight:bold;width:100%;margin-bottom:4px;';
+      saveNetBtn.onclick = function() {
+        var c = el.getElementsByTagName('canvas')[0]; if(!c) return;
+        var tc = document.createElement('canvas'); tc.width=c.width; tc.height=c.height;
+        var ctx=tc.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,tc.width,tc.height); ctx.drawImage(c,0,0);
+
+        if (lastHeatResult && postWrap.style.display !== 'none') {
+            var pal = palSel.value;
+            var scale = Math.max(1, tc.width / 1200);
+            var w = 250 * scale, h = 15 * scale, x = tc.width - w - (40 * scale), y = tc.height - (60 * scale);
+            ctx.fillStyle = '#0f172a'; ctx.font = 'bold ' + (16 * scale) + 'px sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText('Heat Score', x + w/2, y - (10 * scale));
+            var grd = ctx.createLinearGradient(x, 0, x+w, 0);
+            var cm = colorMap[pal];
+            for(var i=0; i<cm.length; i++) grd.addColorStop(i/(cm.length-1), 'rgb('+cm[i].join(',')+')');
+            ctx.fillStyle = grd; ctx.fillRect(x, y, w, h);
+            var minH = parseFloat(minLbl.innerHTML), maxH = parseFloat(maxLbl.innerHTML);
+            ctx.fillStyle = '#475569'; ctx.font = (12 * scale) + 'px sans-serif';
+            ctx.textAlign = 'left'; ctx.fillText(minH.toFixed(4), x, y + h + (18 * scale));
+            ctx.textAlign = 'right'; ctx.fillText(maxH.toFixed(4), x+w, y + h + (18 * scale));
+        }
+
+        var a=document.createElement('a'); a.download='node_prior_network.png'; a.href=tc.toDataURL('image/png'); a.click();
+      };
+      panel.appendChild(saveNetBtn);
+
+      var saveCsvBtn = document.createElement('button');
+      saveCsvBtn.innerHTML = 'Save Heat Scores (CSV)';
+      saveCsvBtn.style.cssText = 'padding:8px 16px;background:#f1f5f9;color:#0f172a;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-weight:bold;width:100%;margin-bottom:4px;';
+      saveCsvBtn.style.display = 'none';
+      panel.appendChild(saveCsvBtn);
+
+      var savePlotBtn = document.createElement('button');
+      savePlotBtn.innerHTML = 'Save Correlation Plot';
+      savePlotBtn.style.cssText = 'padding:8px 16px;background:#f1f5f9;color:#0f172a;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-weight:bold;width:100%;';
+      savePlotBtn.style.display = 'none';
+      panel.appendChild(savePlotBtn);
+
+      wrapper.appendChild(panel);
+      el.appendChild(wrapper);
+
+      // ========== COLOR MAPS ==========
+      var colorMap = {
+        'Plasma': [[13,8,135],[126,3,168],[204,71,120],[248,149,64],[240,249,33]],
+        'Viridis': [[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]],
+        'Heat': [[128,0,0],[255,0,0],[255,165,0],[255,255,0],[255,255,255]],
+        'Blues': [[247,251,255],[198,219,239],[107,174,214],[33,113,181],[8,48,107]],
+        'Reds': [[255,245,240],[254,224,210],[252,146,114],[222,45,38],[165,15,21]]
+      };
+      function getColor(val,mn,mx,pal){
+        var pct=(mx===mn)?0.5:(val-mn)/(mx-mn); pct=Math.max(0,Math.min(1,pct));
+        var s=colorMap[pal],ns=s.length,idx=pct*(ns-1),i=Math.floor(idx),f=idx-i;
+        if(i>=ns-1) return 'rgb('+s[ns-1].join(',')+')';
+        return 'rgb('+Math.round(s[i][0]+f*(s[i+1][0]-s[i][0]))+','+Math.round(s[i][1]+f*(s[i+1][1]-s[i][1]))+','+Math.round(s[i][2]+f*(s[i+1][2]-s[i][2]))+')';
+      }
+      function getGrad(pal){
+        var s=colorMap[pal],p=[];
+        for(var i=0;i<s.length;i++) p.push('rgb('+s[i].join(',')+') '+(i/(s.length-1)*100)+'%');
+        return 'linear-gradient(to right,'+p.join(',')+')';
+      }
+
+      // ========== LHD ENGINE ==========
+      var DT = ", time_step_interval, ";
+      var STAB_THRESH = ", stabilization_threshold, ";
+      var STAB_WIN = ", stabilization_window_size, ";
+
+      function rank(a){
+        var s=a.map(function(v,i){return{v:v,i:i};}).sort(function(a,b){return a.v-b.v;});
+        var r=new Array(a.length),i=0;
+        while(i<s.length){ var j=i; while(j<s.length&&s[j].v===s[i].v) j++;
+          var avg=(i+j+1)/2; for(var k=i;k<j;k++) r[s[k].i]=avg; i=j; }
+        return r;
+      }
+      function pearson(a,b){
+        var n=a.length,sa=0,sb=0,sab=0,sa2=0,sb2=0;
+        for(var i=0;i<n;i++){sa+=a[i];sb+=b[i];sab+=a[i]*b[i];sa2+=a[i]*a[i];sb2+=b[i]*b[i];}
+        var d=Math.sqrt((n*sa2-sa*sa)*(n*sb2-sb*sb));
+        return d===0?1:(n*sab-sa*sb)/d;
+      }
+      function spearman(a,b){ return pearson(rank(a),rank(b)); }
+
+      var lastHeatResult = null;
+
+      function runLHD(seeds, filterMet) {
+        var realNodes = allNodes.filter(function(n){ return n.id.indexOf('LEG_')!==0; });
+        var nodeIds = realNodes.map(function(n){return n.id;});
+        var nodeIdx = {}; nodeIds.forEach(function(id,i){nodeIdx[id]=i;});
+        var n = nodeIds.length;
+
+        var metIds = {};
+        metNodes.forEach(function(m){ metIds[m.id]=true; });
+
+        var adj = []; for(var i=0;i<n;i++){ adj[i]=[]; for(var j=0;j<n;j++) adj[i][j]=0; }
+
+        allEdges.forEach(function(e) {
+          if(filterMet) {
+            var fromIsMet = metIds[e.from] && !seeds.some(function(s){return s===e.from;});
+            var toIsMet = metIds[e.to] && !seeds.some(function(s){return s===e.to;});
+            if(fromIsMet || toIsMet) return;
+          }
+          var fi = nodeIdx[e.from], ti = nodeIdx[e.to];
+          if(fi!==undefined && ti!==undefined) {
+            var w = e.edge_weight || e.value || 1;
+            adj[fi][ti] = w; adj[ti][fi] = w;
+          }
+        });
+
+        var deg = new Array(n).fill(0);
+        for(var i=0;i<n;i++) for(var j=0;j<n;j++) deg[i]+=adj[i][j];
+
+        var H = new Array(n).fill(0);
+        var hps = 1.0/seeds.length;
+        seeds.forEach(function(s){ var idx=nodeIdx[s]; if(idx!==undefined) H[idx]=hps; });
+
+        var maxSteps = Math.ceil(1.0/DT);
+        var corrs=[], times=[], stabT=maxSteps*DT;
+
+        for(var step=1; step<=maxSteps; step++){
+          var nH = new Array(n);
+          for(var i=0;i<n;i++){
+            var lh = deg[i]*H[i];
+            for(var j=0;j<n;j++) lh -= adj[i][j]*H[j];
+            nH[i] = H[i] - DT*lh;
+          }
+          corrs.push(spearman(nH, H));
+          times.push(step*DT);
+          H = nH;
+
+          if(corrs.length >= STAB_WIN){
+            var ok=true;
+            for(var k=corrs.length-STAB_WIN; k<corrs.length-1; k++){
+              if(Math.abs(corrs[k+1]-corrs[k])>=STAB_THRESH){ok=false;break;}
+            }
+            if(ok){ stabT=times[times.length-1]; break; }
+          }
+        }
+
+        var result = [];
+        for(var i=0;i<n;i++) result.push({id:nodeIds[i], heat:H[i], group:realNodes[i].group, label:realNodes[i].label});
+        result.sort(function(a,b){return b.heat-a.heat;});
+
+        return {scores:result, corrs:corrs, times:times, stabT:stabT, seedLabels:seeds.map(function(s){
+          var nd=allNodes.find(function(nn){return nn.id===s;}); return nd?nd.label:s;
+        })};
+      }
+
+      function drawCorrPlot(corrs, times, stabT, seedLabels) {
+        var ctx = corrCanvas.getContext('2d');
+        var W=corrCanvas.width, H=corrCanvas.height;
+        ctx.clearRect(0,0,W,H);
+        ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
+
+        ctx.save();
+        ctx.scale(4, 4);
+        var logicalW = 280, logicalH = 140;
+
+        var pad={t:25,r:30,b:35,l:40};
+        var pw=logicalW-pad.l-pad.r, ph=logicalH-pad.t-pad.b;
+        var minC=Math.min.apply(null,corrs), maxC=Math.max.apply(null,corrs);
+        if(maxC===minC){minC-=0.01;maxC+=0.01;}
+        var maxT=times[times.length-1];
+
+        ctx.fillStyle='#0f172a'; ctx.font='bold 10px sans-serif'; ctx.textAlign='center';
+        ctx.fillText('Seeds: '+seedLabels.join(', ').substring(0,40), logicalW/2, 12);
+
+        ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(pad.l,pad.t); ctx.lineTo(pad.l,pad.t+ph); ctx.lineTo(pad.l+pw,pad.t+ph); ctx.stroke();
+
+        ctx.fillStyle='#475569'; ctx.font='9px sans-serif'; ctx.textAlign='center';
+        ctx.fillText('Time Step',pad.l+pw/2,logicalH-3);
+        ctx.save(); ctx.translate(10,pad.t+ph/2); ctx.rotate(-Math.PI/2); ctx.fillText('Spearman Corr',0,0); ctx.restore();
+
+        ctx.font='8px sans-serif'; ctx.textAlign='right';
+        for(var i=0;i<=4;i++){var v=minC+i*(maxC-minC)/4; var y=pad.t+ph-(v-minC)/(maxC-minC)*ph; ctx.fillText(v.toFixed(3),pad.l-3,y+3);}
+        ctx.textAlign='center';
+        for(var i=0;i<=4;i++){var v=i*maxT/4; var xx=pad.l+v/maxT*pw; ctx.fillText(v.toFixed(2),xx,pad.t+ph+12);}
+
+        ctx.strokeStyle='#0f172a'; ctx.lineWidth=1.5; ctx.beginPath();
+        for(var i=0;i<corrs.length;i++){
+          var xx=pad.l+(times[i]/maxT)*pw, yy=pad.t+ph-(corrs[i]-minC)/(maxC-minC)*ph;
+          if(i===0) ctx.moveTo(xx,yy); else ctx.lineTo(xx,yy);
+        }
+        ctx.stroke();
+
+        var sx=pad.l+(stabT/maxT)*pw;
+        ctx.strokeStyle='#D55E00'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+        ctx.beginPath(); ctx.moveTo(sx,pad.t); ctx.lineTo(sx,pad.t+ph); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle='#D55E00'; ctx.font='8px sans-serif'; ctx.textAlign='left';
+        ctx.fillText('t='+stabT.toFixed(3), sx+2, pad.t+10);
+
+        ctx.restore();
+      }
+
+      function applyVisualization(result, topPct, pal) {
+        var scores = result.scores;
+        var count = Math.max(1, Math.ceil(scores.length * topPct / 100));
+        var topScores = scores.slice(0, count);
+        var topMap = {}; topScores.forEach(function(s){topMap[s.id]=s;});
+
+        var minH=topScores[topScores.length-1].heat, maxH=topScores[0].heat;
+
+        var micN=[],pathN=[],metN2=[];
+        topScores.forEach(function(s){
+          if(s.group==='Microbe') micN.push(s);
+          else if(s.group==='Pathway') pathN.push(s);
+          else if(s.group==='Metabolite') metN2.push(s);
+        });
+
+        var rm=200+(micN.length*15), rp=150+(pathN.length*20), rme=100+(metN2.length*25);
+        var xm=-(rm+rp+500), xp=0, xme2=(rp+rme+500);
+        function assignC(arr,cx,r){ for(var i=0;i<arr.length;i++){ var a=(i/arr.length)*2*Math.PI; arr[i].nx=cx+r*Math.cos(a); arr[i].ny=r*Math.sin(a); }}
+        assignC(micN,xm,rm); assignC(pathN,xp,rp); assignC(metN2,xme2,rme);
+
+        var updates=[];
+        allNodes.forEach(function(nd){
+          if(nd.id.indexOf('LEG_')===0) return;
+          if(topMap[nd.id]){
+            var s=topMap[nd.id], c=getColor(s.heat,minH,maxH,pal);
+            updates.push({id:nd.id, hidden:false, x:s.nx, y:s.ny, color:{background:c,border:'#475569',highlight:c}});
+          } else {
+            updates.push({id:nd.id, hidden:true});
+          }
+        });
+        nodesDS.update(updates);
+
+        gradBar.style.background = getGrad(pal);
+        minLbl.innerHTML = minH.toFixed(4);
+        maxLbl.innerHTML = maxH.toFixed(4);
+
+        if(visEngine && visEngine.fit) visEngine.fit({animation:{duration:1000,easingFunction:'easeInOutQuad'}});
+      }
+
+      // ========== EVENT HANDLERS ==========
+      runBtn.onclick = function() {
+        var selected = [];
+        seedCheckboxes.forEach(function(cb) {
+           if (cb.checked) selected.push(cb.value);
+        });
+        if(selected.length===0){ alert('Please select at least one seed node.'); return; }
+
+        // Ensure legend nodes are physically removed from the network
+        if (nodesDS.get('LEG_MIC')) nodesDS.remove(['LEG_MIC', 'LEG_PATH', 'LEG_MET']);
+
+        runBtn.innerHTML = 'Running...'; runBtn.disabled = true;
+        setTimeout(function(){
+          lastHeatResult = runLHD(selected, filterSel.value==='YES');
+          drawCorrPlot(lastHeatResult.corrs, lastHeatResult.times, lastHeatResult.stabT, lastHeatResult.seedLabels);
+          stabInfo.innerHTML = 'Stabilization at t = '+lastHeatResult.stabT.toFixed(4)+' | Seeds: '+lastHeatResult.seedLabels.join(', ');
+          applyVisualization(lastHeatResult, parseInt(pctSlider.value), palSel.value);
+          postWrap.style.display = 'block';
+          saveCsvBtn.style.display = 'block';
+          savePlotBtn.style.display = 'block';
+          runBtn.innerHTML = 'Run Analysis'; runBtn.disabled = false;
+        }, 50);
+      };
+
+      pctSlider.oninput = function() {
+        pctLabel.innerHTML = pctSlider.value + '%';
+        if(lastHeatResult) applyVisualization(lastHeatResult, parseInt(pctSlider.value), palSel.value);
+      };
+      palSel.onchange = function() {
+        if(lastHeatResult) applyVisualization(lastHeatResult, parseInt(pctSlider.value), palSel.value);
+      };
+
+      saveCsvBtn.onclick = function() {
+        if(!lastHeatResult) return;
+        var csv = 'Node,Heat_score,Group\\n';
+        lastHeatResult.scores.forEach(function(s){ csv += s.id+','+s.heat+','+s.group+'\\n'; });
+        var blob = new Blob([csv], {type:'text/csv'});
+        var a = document.createElement('a'); a.download='node_prior_heat_scores.csv'; a.href=URL.createObjectURL(blob); a.click();
+      };
+
+      savePlotBtn.onclick = function() {
+        var a = document.createElement('a'); a.download='node_prior_stabilization_curve.png'; a.href=corrCanvas.toDataURL('image/png'); a.click();
+      };
+
+      resetBtn.onclick = function() {
+        // Re-add legend nodes if removed
+        if (!nodesDS.get('LEG_MIC')) {
+          var ly = Math.max.apply(null, allNodes.map(function(n){return n.y||0;})) + 400;
+          nodesDS.add([
+            {id:'LEG_MIC',label:'Microbe',title:'',group:'Microbe',size:60,x:-300,y:ly},
+            {id:'LEG_PATH',label:'Pathway',title:'',group:'Pathway',size:60,x:0,y:ly},
+            {id:'LEG_MET',label:'Metabolite',title:'',group:'Metabolite',size:60,x:300,y:ly}
+          ]);
+        }
+        var nUpdates = [], eUpdates = [];
+        allNodes.forEach(function(n) {
+          if (n.id.indexOf('LEG_') === 0) return;
+          var ic = initialCoords[n.id];
+          nUpdates.push({id:n.id, hidden:false, color:null, x:ic?ic.x:0, y:ic?ic.y:0});
+        });
+        allEdges.forEach(function(e) {
+          eUpdates.push({id:e.id, hidden:false, color:null, width:null});
+        });
+        nodesDS.update(nUpdates);
+        edgesDS.update(eUpdates);
+        postWrap.style.display = 'none';
+        saveCsvBtn.style.display = 'none';
+        savePlotBtn.style.display = 'none';
+        lastHeatResult = null;
+        if(visEngine && visEngine.fit) visEngine.fit({animation:{duration:1000,easingFunction:'easeInOutQuad'}});
+      };
+    }
+    ")
+
+    vis_plot <- visNetwork::visNetwork(nodes_df, edges_df, width = "100%", height = "95vh") |>
+      visNetwork::visNodes(font = list(color = "#0f172a", size = 35, face = "sans-serif", background = "rgba(255,255,255,0.85)"), borderWidth = 1.5, shadow = TRUE) |>
+      visNetwork::visEdges(smooth = FALSE, color = list(color = "rgba(180, 180, 180, 0.4)", highlight = "#e11d48"), width = 1) |>
+      visNetwork::visGroups(groupname = "Microbe", color = list(background = "#9AA374", border = "#7A825C", highlight = "#B4BE89"), shape = "triangle") |>
+      visNetwork::visGroups(groupname = "Pathway", color = list(background = "#C1ABAD", border = "#9A898A", highlight = "#D8C5C7"), shape = "dot") |>
+      visNetwork::visGroups(groupname = "Metabolite", color = list(background = "#4E7286", border = "#3A5565", highlight = "#6392AB"), shape = "square") |>
+      visNetwork::visInteraction(navigationButtons = FALSE, dragNodes = TRUE, multiselect = TRUE, hover = TRUE) |>
+      visNetwork::visPhysics(enabled = FALSE) |>
+      htmlwidgets::onRender(js_custom_panel)
+
+    vis_plot$x$background <- "#ffffff"
+    out_html <- file.path(output_directory, paste0("interactive_node_prior_", cleaned_input_file_name, ".html"))
+    htmlwidgets::saveWidget(vis_plot, file = out_html, selfcontained = TRUE, title = "NUIMM")
+  }
+
+  message("Node prioritization complete.")
   invisible(NULL)
 }
