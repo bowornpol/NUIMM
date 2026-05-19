@@ -18,37 +18,7 @@ con_pmn_int(
   pmn_p_adjust_method = "fdr"
 )
 }
-\arguments{
-\item{path_abun_file}{Character path to pathway abundance file.}
-
-\item{met_con_file}{Character path to metabolite concentration file.}
-
-\item{gsea_file}{Character path to GSEA file.}
-
-\item{metadata_file}{Character path to metadata file.}
-
-\item{output_dir}{Character path to output directory.}
-
-\item{pmn_corr_method}{Correlation options: "spearman", "pearson", "kendall".}
-
-\item{pmn_filter_by}{Filter options: "none", "p_value", "q_value".}
-
-\item{pmn_corr_cutoff}{Numeric correlation cutoff.}
-
-\item{pmn_pvalue_cutoff}{Numeric p-value cutoff.}
-
-\item{pmn_q_value_cutoff}{Numeric q-value cutoff.}
-
-\item{pmn_p_adjust_method}{P-adj options: "fdr", "holm", "hochberg", etc.}
-}
-\value{
-Vector of PMN file paths.
-}
 \description{
 Internal Pathway-Metabolite Network Helper
-}
-\details{
-Connects Pathways to Metabolites using vectorized, high-performance matrix
-correlation instead of nested loops.
 }
 \keyword{internal}

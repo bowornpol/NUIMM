@@ -1,10 +1,6 @@
 #' Internal Microbe-Pathway Network Helper
-#'
-#' @details
-#' Connects Microbes to Pathways by calculating the relative contribution of taxa
-#' to functions and applying user-defined filters to retain significant connections.
-#'
 #' @keywords internal
+#' @name con_mpn_int
 utils::globalVariables(c("relative_contribution", "FunctionID", "taxon_function_abun", "total_abun", "TaxonID"))
 
 con_mpn_int <- function(
@@ -31,6 +27,9 @@ con_mpn_int <- function(
   for (cls in classes) {
     sub_df <- merged[merged$class == cls, ]
     if (nrow(sub_df) == 0) next
+
+    message(sprintf("  Processing Microbe-Pathway Layer for class: %s", cls))
+    initial_pairs <- nrow(unique(sub_df[, c("FunctionID", "TaxonID")]))
 
     # BULLETPROOF MATH using dplyr
     res <- sub_df |>
@@ -64,6 +63,7 @@ con_mpn_int <- function(
     }
 
     if (nrow(res) > 0) {
+      message(sprintf("    Retained %d microbe-pathway associations involving %d unique microbial taxa.", nrow(res), length(unique(res$TaxonID))))
       fname <- file.path(output_dir, paste0("mpn_", cls, ".csv"))
       write.csv(res, fname, row.names = FALSE)
       output_paths <- c(output_paths, fname)

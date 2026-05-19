@@ -33,18 +33,87 @@ con_mln(
   pmn_p_adjust_method = "fdr",
   visualize = TRUE,
   layout_method = "sugiyama",
-  node_colors = c(Microbe = "#D55E00", Pathway = "#0072B2", Metabolite = "#009E73"),
-  node_shapes = c(Microbe = 24, Pathway = 21, Metabolite = 22),
+  node_colors = c(Microbe = "#9AA374", Pathway = "#C1ABAD", Metabolite = "#4E7286"),
+  node_shapes = c(Microbe = "hexagon", Pathway = "dot", Metabolite = "diamond"),
   base_node_size = 6,
   plot_width = 12,
   plot_height = 10,
   plot_dpi = 600
 )
 }
+\arguments{
+\item{gene_abun_file}{Path to gene/KO abundance table (samples as columns).}
+
+\item{path_abun_file}{Path to pathway abundance table (samples as columns).}
+
+\item{path_con_file}{Path to pathway contribution file linking taxa to functions.}
+
+\item{met_con_file}{Path to metabolite concentration table (samples as rows).}
+
+\item{metadata_file}{Path to sample metadata CSV with 'SampleID' and 'class' columns.}
+
+\item{taxonomy_file}{Path to taxonomy mapping file. Required for PICRUSt format.}
+
+\item{map_file}{Path to pathway-to-gene mapping file for GSEA.}
+
+\item{output_dir}{Path to output directory.}
+
+\item{format}{Input data format: "universal", "humann", or "picrust".}
+
+\item{ppn_da_method}{Differential abundance method: "deseq2", "edger", "maaslin2", or "simple".}
+
+\item{ppn_map_database}{Pathway database: "kegg", "metacyc", or "custom".}
+
+\item{ppn_rank_by}{Gene ranking metric for GSEA: "signed_log_pvalue", "log2foldchange", or "pvalue".}
+
+\item{ppn_p_adjust_method}{P-value adjustment method for GSEA.}
+
+\item{ppn_pvalue_cutoff}{P-value cutoff for GSEA significance.}
+
+\item{ppn_jaccard_cutoff}{Minimum Jaccard index to retain pathway-pathway edges.}
+
+\item{ppn_jaccard_method}{Jaccard calculation source: "gsea_core" or "map_file".}
+
+\item{comparisons_list}{Optional list of pairwise group comparisons.}
+
+\item{mpn_filtering}{Microbe-pathway filtering: "unfiltered", "mean", "median", or "topN\%".}
+
+\item{pmn_corr_method}{Correlation method for pathway-metabolite: "spearman", "pearson", or "kendall".}
+
+\item{pmn_filter_by}{Significance filter: "none", "p_value", or "q_value".}
+
+\item{pmn_corr_cutoff}{Minimum absolute correlation for pathway-metabolite edges.}
+
+\item{pmn_pvalue_cutoff}{P-value cutoff for pathway-metabolite edges.}
+
+\item{pmn_q_value_cutoff}{Q-value cutoff for pathway-metabolite edges.}
+
+\item{pmn_p_adjust_method}{P-value adjustment method for pathway-metabolite correlations.}
+
+\item{visualize}{Logical. If TRUE, generates interactive HTML visualization.}
+
+\item{layout_method}{Network layout algorithm.}
+
+\item{node_colors}{Named character vector of colors for each node group.}
+
+\item{node_shapes}{Named character vector of shapes for each node group.}
+
+\item{base_node_size}{Base size for network nodes.}
+
+\item{plot_width}{Figure width in inches.}
+
+\item{plot_height}{Figure height in inches.}
+
+\item{plot_dpi}{Output image resolution (DPI).}
+}
+\value{
+Character vector of output file paths.
+}
 \description{
 Multi-layered Network Construction (End-to-End)
 }
 \details{
-Orchestrates the construction of a multi-layered network by standardizing inputs,
-executing the layer-building functions (PPN, MPN, PMN), and triggering integration.
+Constructs an integrated multi-layered network by sequentially building
+three sub-network layers (Microbe-Pathway, Pathway-Pathway, Pathway-Metabolite),
+then merging them into a single unified network with an interactive HTML visualization.
 }

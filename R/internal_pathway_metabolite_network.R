@@ -1,21 +1,4 @@
 #' Internal Pathway-Metabolite Network Helper
-#'
-#' @details
-#' Connects Pathways to Metabolites using vectorized, high-performance matrix
-#' correlation instead of nested loops.
-#'
-#' @param path_abun_file Character path to pathway abundance file.
-#' @param met_con_file Character path to metabolite concentration file.
-#' @param gsea_file Character path to GSEA file.
-#' @param metadata_file Character path to metadata file.
-#' @param output_dir Character path to output directory.
-#' @param pmn_corr_method Correlation options: "spearman", "pearson", "kendall".
-#' @param pmn_filter_by Filter options: "none", "p_value", "q_value".
-#' @param pmn_corr_cutoff Numeric correlation cutoff.
-#' @param pmn_pvalue_cutoff Numeric p-value cutoff.
-#' @param pmn_q_value_cutoff Numeric q-value cutoff.
-#' @param pmn_p_adjust_method P-adj options: "fdr", "holm", "hochberg", etc.
-#' @return Vector of PMN file paths.
 #' @keywords internal
 con_pmn_int <- function(
   path_abun_file, met_con_file, gsea_file, metadata_file, output_dir,
@@ -44,7 +27,7 @@ con_pmn_int <- function(
   mat_x <- t(path_abun[, common, drop = FALSE])
   mat_y <- as.matrix(met_con[common, , drop = FALSE])
 
-  message("  Computing fast matrix correlations...")
+  message("  Computing pathway-metabolite correlation matrix...")
 
   # Fast vectorized correlation
   cor_res <- WGCNA::corAndPvalue(x = mat_x, y = mat_y, use = "pairwise.complete.obs", method = pmn_corr_method)
@@ -68,6 +51,8 @@ con_pmn_int <- function(
     } else if (pmn_filter_by == "q_value") {
       results <- results[results$q_value <= pmn_q_value_cutoff, ]
     }
+
+    message(sprintf("    Retained %d significant pathway-metabolite correlations out of %d initial pairs.", nrow(results), nrow(dt_cor)))
 
     fname <- file.path(output_dir, "pmn_results.csv")
     write.csv(results, fname, row.names = FALSE)

@@ -4,7 +4,7 @@
 \alias{read_input_file}
 \title{Internal helper function to read CSV or TSV files}
 \usage{
-read_input_file(file_path, file_type = c("csv", "tsv"), ...)
+read_input_file(file_path, file_type = NULL, ...)
 }
 \arguments{
 \item{file_path}{A character string specifying the path to the input file.}
@@ -18,9 +18,5 @@ A data frame containing the data from the specified file.
 }
 \description{
 Internal helper function to read CSV or TSV files
-}
-\details{
-Uses high-performance `data.table::fread` to read massive omics datasets
-significantly faster than base R, handling row.names safely.
 }
 \keyword{internal}

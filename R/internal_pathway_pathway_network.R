@@ -1,5 +1,25 @@
 #' Internal Pathway-Pathway Network Helper
+#'
+#' @details
+#' Performs differential abundance analysis, runs Gene Set Enrichment Analysis (GSEA),
+#' and calculates Jaccard similarity between significant pathways to build
+#' the pathway-pathway sub-network layer.
+#'
+#' @param gene_abun_file Path to gene/KO abundance table.
+#' @param metadata_file Path to sample metadata CSV.
+#' @param map_file Path to pathway-to-gene mapping file.
+#' @param output_dir Path to output directory.
+#' @param ppn_da_method Differential abundance method: "deseq2", "edger", "maaslin2", or "simple".
+#' @param ppn_map_database Pathway database: "kegg", "metacyc", or "custom".
+#' @param ppn_rank_by Gene ranking metric: "signed_log_pvalue", "log2foldchange", or "pvalue".
+#' @param ppn_p_adjust_method P-value adjustment method for GSEA.
+#' @param ppn_pvalue_cutoff P-value cutoff for GSEA significance.
+#' @param ppn_jaccard_cutoff Minimum Jaccard index to retain edges.
+#' @param ppn_jaccard_method Jaccard source: "gsea_core" or "map_file".
+#' @param comparisons_list Optional list of pairwise group comparisons.
+#' @return List with `gsea_paths` and `jaccard_paths` character vectors.
 #' @keywords internal
+#' @name con_ppn_int
 utils::globalVariables(c("coef", "pval", "feature", "ID", "core_enrichment", "gene", "term"))
 
 con_ppn_int <- function(
@@ -42,6 +62,17 @@ con_ppn_int <- function(
   } else if (ppn_map_database == "custom") {
     map_path <- map_file
   }
+  
+  # Fallback logic if the internal mapping file is missing
+  if (is.null(map_path) || map_path == "") {
+    if (!is.null(map_file) && file.exists(map_file)) {
+      message("Warning: Internal database file for ", ppn_map_database, " not found. Falling back to the uploaded map_file.")
+      map_path <- map_file
+    } else {
+      stop(paste("Mapping file for database", ppn_map_database, "not found. Please use 'custom' and upload a map file."))
+    }
+  }
+
   map_raw <- read_input_file(map_path, file_type = "csv", header = FALSE, stringsAsFactors = FALSE)
   TERM2GENE <- data.frame(term = map_raw[, 1], gene = map_raw[, 2])
 
@@ -55,7 +86,7 @@ con_ppn_int <- function(
     cond1 <- comp[1]
     cond2 <- comp[2]
     comp_name <- paste0(cond1, "_vs_", cond2)
-    message("Analyzing: ", comp_name)
+    message("  Processing Pathway-Pathway Layer for comparison: ", comp_name)
 
     sub_meta <- meta[meta$class %in% c(cond1, cond2), ]
     sub_abun <- abun[, sub_meta$SampleID, drop = FALSE]
@@ -123,6 +154,7 @@ con_ppn_int <- function(
 
     if (!is.null(gsea_res) && nrow(as.data.frame(gsea_res)) > 0) {
       gsea_out <- as.data.frame(gsea_res)
+      message(sprintf("    Identified %d significant pathways via Gene Set Enrichment Analysis.", nrow(gsea_out)))
       fpath <- file.path(output_dir, paste0("gsea_results_", comp_name, ".csv"))
       write.csv(gsea_out, fpath, row.names = FALSE)
       gsea_paths <- c(gsea_paths, fpath)
@@ -150,6 +182,7 @@ con_ppn_int <- function(
           }
         }
       }
+      message(sprintf("    Constructed pathway-pathway network with %d edges based on Jaccard similarity.", nrow(jaccard_res)))
       jpath <- file.path(output_dir, paste0("pathway_jaccard_", comp_name, ".csv"))
       write.csv(jaccard_res, jpath, row.names = FALSE)
       jaccard_paths <- c(jaccard_paths, jpath)

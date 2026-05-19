@@ -2,18 +2,12 @@
 
 #' Internal helper function to read CSV or TSV files
 #'
-#' @details
-#' Uses high-performance `data.table::fread` to read massive omics datasets
-#' significantly faster than base R, handling row.names safely.
-#'
 #' @param file_path A character string specifying the path to the input file.
 #' @param file_type A character string indicating the file type ("csv" or "tsv").
 #' @param ... Additional arguments to pass to the reader.
 #' @return A data frame containing the data from the specified file.
 #' @keywords internal
-read_input_file <- function(file_path, file_type = c("csv", "tsv"), ...) {
-  file_type <- match.arg(file_type)
-
+read_input_file <- function(file_path, file_type = NULL, ...) {
   if (!file.exists(file_path)) {
     stop(paste("File not found:", file_path))
   }
@@ -26,12 +20,12 @@ read_input_file <- function(file_path, file_type = c("csv", "tsv"), ...) {
   args$row.names <- NULL
 
   if (requireNamespace("data.table", quietly = TRUE)) {
-    sep_char <- if (file_type == "csv") "," else "\t"
-    # Fast read using data.table
-    data <- do.call(data.table::fread, c(list(file = file_path, sep = sep_char, data.table = FALSE), args))
+    # Fast read using data.table (auto-detects separator)
+    data <- do.call(data.table::fread, c(list(file = file_path, data.table = FALSE), args))
   } else {
-    # Fallback to base R
-    sep_char <- if (file_type == "csv") "," else "\t"
+    # Fallback to base R, guess separator by extension
+    ext <- tolower(tools::file_ext(file_path))
+    sep_char <- if (ext == "tsv" || (!is.null(file_type) && file_type == "tsv")) "\t" else ","
     data <- read.delim(file_path, sep = sep_char, ...)
   }
 

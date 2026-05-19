@@ -1,5 +1,43 @@
 #' Multi-layered Network Construction (End-to-End)
 #'
+#' @details
+#' Constructs an integrated multi-layered network by sequentially building
+#' three sub-network layers (Microbe-Pathway, Pathway-Pathway, Pathway-Metabolite),
+#' then merging them into a single unified network with an interactive HTML visualization.
+#'
+#' @param gene_abun_file Path to gene/KO abundance table (samples as columns).
+#' @param path_abun_file Path to pathway abundance table (samples as columns).
+#' @param path_con_file Path to pathway contribution file linking taxa to functions.
+#' @param met_con_file Path to metabolite concentration table (samples as rows).
+#' @param metadata_file Path to sample metadata CSV with 'SampleID' and 'class' columns.
+#' @param taxonomy_file Path to taxonomy mapping file. Required for PICRUSt format.
+#' @param map_file Path to pathway-to-gene mapping file for GSEA.
+#' @param output_dir Path to output directory.
+#' @param format Input data format: "universal", "humann", or "picrust".
+#' @param ppn_da_method Differential abundance method: "deseq2", "edger", "maaslin2", or "simple".
+#' @param ppn_map_database Pathway database: "kegg", "metacyc", or "custom".
+#' @param ppn_rank_by Gene ranking metric for GSEA: "signed_log_pvalue", "log2foldchange", or "pvalue".
+#' @param ppn_p_adjust_method P-value adjustment method for GSEA.
+#' @param ppn_pvalue_cutoff P-value cutoff for GSEA significance.
+#' @param ppn_jaccard_cutoff Minimum Jaccard index to retain pathway-pathway edges.
+#' @param ppn_jaccard_method Jaccard calculation source: "gsea_core" or "map_file".
+#' @param comparisons_list Optional list of pairwise group comparisons.
+#' @param mpn_filtering Microbe-pathway filtering: "unfiltered", "mean", "median", or "topN\%".
+#' @param pmn_corr_method Correlation method for pathway-metabolite: "spearman", "pearson", or "kendall".
+#' @param pmn_filter_by Significance filter: "none", "p_value", or "q_value".
+#' @param pmn_corr_cutoff Minimum absolute correlation for pathway-metabolite edges.
+#' @param pmn_pvalue_cutoff P-value cutoff for pathway-metabolite edges.
+#' @param pmn_q_value_cutoff Q-value cutoff for pathway-metabolite edges.
+#' @param pmn_p_adjust_method P-value adjustment method for pathway-metabolite correlations.
+#' @param visualize Logical. If TRUE, generates interactive HTML visualization.
+#' @param layout_method Network layout algorithm.
+#' @param node_colors Named character vector of colors for each node group.
+#' @param node_shapes Named character vector of shapes for each node group.
+#' @param base_node_size Base size for network nodes.
+#' @param plot_width Figure width in inches.
+#' @param plot_height Figure height in inches.
+#' @param plot_dpi Output image resolution (DPI).
+#' @return Character vector of output file paths.
 #' @export
 con_mln <- function(
   gene_abun_file, path_abun_file, path_con_file, met_con_file, metadata_file,
@@ -16,7 +54,6 @@ con_mln <- function(
   pmn_filter_by = c("none", "p_value", "q_value"),
   pmn_corr_cutoff = 0.3, pmn_pvalue_cutoff = 0.05, pmn_q_value_cutoff = 0.05,
   pmn_p_adjust_method = "fdr", visualize = TRUE, layout_method = "sugiyama",
-  # --- Modern Biotech Defaults ---
   node_colors = c("Microbe" = "#9AA374", "Pathway" = "#C1ABAD", "Metabolite" = "#4E7286"),
   node_shapes = c("Microbe" = "hexagon", "Pathway" = "dot", "Metabolite" = "diamond"),
   base_node_size = 6, plot_width = 12, plot_height = 10, plot_dpi = 600
@@ -28,7 +65,7 @@ con_mln <- function(
 
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-  message("--- Preparing Scalable Pipeline (Format: ", format, ") ---")
+  message("--- Preparing Data Processing Pipeline (Format: ", format, ") ---")
   processed_contrib_file <- file.path(output_dir, "processed_contribution.csv")
 
   # Standardized Preprocessing
@@ -73,7 +110,7 @@ con_mln <- function(
   for (i in seq_along(ppn_results$gsea_paths)) {
     curr_gsea <- ppn_results$gsea_paths[i]
     curr_jaccard <- ppn_results$jaccard_paths[i]
-    message("\nInitiating integration algorithm for: ", basename(curr_gsea))
+    message("\nInitiating multi-layered integration for: ", basename(curr_gsea))
 
     curr_mpn <- con_mpn_int(processed_contrib_file, metadata_file, NULL, file.path(output_dir, "mpn_output"), mpn_filtering)[1]
     curr_pmn <- con_pmn_int(path_abun_file, met_con_file, curr_gsea, metadata_file, file.path(output_dir, "pmn_output"), pmn_corr_method, pmn_filter_by, pmn_corr_cutoff, pmn_pvalue_cutoff, pmn_q_value_cutoff, pmn_p_adjust_method)[1]
