@@ -2,3 +2,7 @@
 ^\.Rproj\.user$
 ^LICENSE\.md$
 ^dev$
+^\.gitignore$
+^\.Rbuildignore$
+^scratch$
+^\.github$
