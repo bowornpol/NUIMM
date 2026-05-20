@@ -17,7 +17,9 @@ con_mln_int(
   base_node_size,
   plot_width,
   plot_height,
-  plot_dpi
+  plot_dpi,
+  ppn_map_database = c("kegg", "metacyc", "custom"),
+  map_file = NULL
 )
 }
 \arguments{

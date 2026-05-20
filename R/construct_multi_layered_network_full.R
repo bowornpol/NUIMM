@@ -43,7 +43,7 @@ con_mln <- function(
   gene_abun_file, path_abun_file, path_con_file, met_con_file, metadata_file,
   taxonomy_file = NULL, map_file, output_dir,
   format = c("universal", "humann", "picrust"),
-  ppn_da_method = c("deseq2", "edger", "maaslin2", "simple"),
+  ppn_da_method = c("maaslin2", "deseq2", "edger", "simple"),
   ppn_map_database = c("kegg", "metacyc", "custom"),
   ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
   ppn_p_adjust_method = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none"),
@@ -119,7 +119,8 @@ con_mln <- function(
       gsea_file = curr_gsea, mpn_file = curr_mpn, ppn_file = curr_jaccard, pmn_file = curr_pmn,
       output_dir = file.path(output_dir, "mln_final"), visualize = visualize,
       layout_method = layout_method, node_colors = node_colors, node_shapes = node_shapes,
-      base_node_size = base_node_size, plot_width = plot_width, plot_height = plot_height, plot_dpi = plot_dpi
+      base_node_size = base_node_size, plot_width = plot_width, plot_height = plot_height, plot_dpi = plot_dpi,
+      ppn_map_database = ppn_map_database, map_file = map_file
     )
     if (!is.null(res_path)) final_outputs <- c(final_outputs, res_path)
   }
