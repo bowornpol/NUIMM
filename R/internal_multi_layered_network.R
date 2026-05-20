@@ -42,8 +42,11 @@ clean_taxonomy <- function(tax_string) {
 #' @keywords internal
 con_mln_int <- function(
   gsea_file, mpn_file, ppn_file, pmn_file, output_dir,
-  visualize, layout_method, node_colors, node_shapes, base_node_size, plot_width, plot_height, plot_dpi
+  visualize, layout_method, node_colors, node_shapes, base_node_size, plot_width, plot_height, plot_dpi,
+  ppn_map_database = c("kegg", "metacyc", "custom"), map_file = NULL
 ) {
+  ppn_map_database <- match.arg(ppn_map_database)
+
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
   base_name <- tools::file_path_sans_ext(basename(gsea_file))
@@ -72,6 +75,59 @@ con_mln_int <- function(
     if (nrow(pmn_valid) > 0) edges <- rbind(edges, data.frame(from = pmn_valid$FunctionID, to = pmn_valid$MetaboliteID, value = abs(pmn_valid$correlation), type = "Pathway-Metabolite"))
   }
 
+  # Load pathway ID to name dictionary/mapping
+  pwy_names <- list()
+  if (ppn_map_database == "kegg") {
+    name_path <- system.file("extdata", "KEGG_pwy_name.csv", package = "NUIMM")
+    if (file.exists(name_path)) {
+      name_df <- read_input_file(name_path, file_type = "csv", header = FALSE, stringsAsFactors = FALSE)
+      pwy_names <- setNames(as.character(name_df[[2]]), as.character(name_df[[1]]))
+    }
+  } else if (ppn_map_database == "metacyc") {
+    name_path <- system.file("extdata", "metacyc_pwy_name.csv", package = "NUIMM")
+    if (file.exists(name_path)) {
+      name_df <- read_input_file(name_path, file_type = "csv", header = FALSE, stringsAsFactors = FALSE)
+      pwy_names <- setNames(as.character(name_df[[2]]), as.character(name_df[[1]]))
+    }
+  } else if (ppn_map_database == "custom") {
+    if (!is.null(map_file) && file.exists(map_file)) {
+      name_df <- read_input_file(map_file, file_type = "csv", header = FALSE, stringsAsFactors = FALSE)
+      if (ncol(name_df) >= 2) {
+        pwy_names <- setNames(as.character(name_df[[2]]), as.character(name_df[[1]]))
+      }
+    }
+  }
+
+  if (nrow(edges) > 0 && length(pwy_names) > 0) {
+    translate_vec <- function(vec) {
+      sapply(vec, function(x) {
+        if (x %in% names(pwy_names)) {
+          val <- pwy_names[[x]]
+          if (!is.na(val) && val != "") {
+            return(val)
+          }
+        }
+        return(x)
+      })
+    }
+    
+    idx_mp <- edges$type == "Microbe-Pathway"
+    if (any(idx_mp)) {
+      edges$to[idx_mp] <- translate_vec(edges$to[idx_mp])
+    }
+    
+    idx_pp <- edges$type == "Pathway-Pathway"
+    if (any(idx_pp)) {
+      edges$from[idx_pp] <- translate_vec(edges$from[idx_pp])
+      edges$to[idx_pp] <- translate_vec(edges$to[idx_pp])
+    }
+    
+    idx_pm <- edges$type == "Pathway-Metabolite"
+    if (any(idx_pm)) {
+      edges$from[idx_pm] <- translate_vec(edges$from[idx_pm])
+    }
+  }
+
   if (nrow(edges) > 0) {
     message(sprintf("    Final multi-layered network assembled with %d nodes and %d edges.", length(unique(c(edges$from, edges$to))), nrow(edges)))
     write.csv(edges, out_csv, row.names = FALSE)
@@ -80,8 +136,6 @@ con_mln_int <- function(
     if (visualize) {
       tryCatch(
         {
-
-
           g <- igraph::graph_from_data_frame(edges, directed = FALSE)
           igraph::V(g)$group <- ifelse(igraph::V(g)$name %in% edges$from[edges$type == "Microbe-Pathway"], "Microbe",
             ifelse(igraph::V(g)$name %in% edges$to[edges$type == "Pathway-Metabolite"], "Metabolite", "Pathway")

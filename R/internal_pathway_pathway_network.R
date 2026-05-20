@@ -23,7 +23,7 @@ utils::globalVariables(c("coef", "pval", "feature", "ID", "core_enrichment", "ge
 #' @keywords internal
 con_ppn_int <- function(
   gene_abun_file, metadata_file, map_file, output_dir,
-  ppn_da_method = c("deseq2", "edger", "maaslin2", "simple"),
+  ppn_da_method = c("maaslin2", "deseq2", "edger", "simple"),
   ppn_map_database = c("kegg", "metacyc", "custom"),
   ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
   ppn_p_adjust_method = "fdr", ppn_pvalue_cutoff = 0.05,
@@ -55,13 +55,13 @@ con_ppn_int <- function(
 
   map_path <- NULL
   if (ppn_map_database == "kegg") {
-    map_path <- system.file("extdata", "kegg_mapping.csv", package = "NUIMM")
+    map_path <- system.file("extdata", "KEGG_pwy_to_KO.csv", package = "NUIMM")
   } else if (ppn_map_database == "metacyc") {
-    map_path <- system.file("extdata", "metacyc_mapping.csv", package = "NUIMM")
+    map_path <- system.file("extdata", "metacyc_pwy_to_rxn_pro_cleaned.csv", package = "NUIMM")
   } else if (ppn_map_database == "custom") {
     map_path <- map_file
   }
-  
+
   # Fallback logic if the internal mapping file is missing
   if (is.null(map_path) || map_path == "") {
     if (!is.null(map_file) && file.exists(map_file)) {
@@ -73,7 +73,23 @@ con_ppn_int <- function(
   }
 
   map_raw <- read_input_file(map_path, file_type = "csv", header = FALSE, stringsAsFactors = FALSE)
-  TERM2GENE <- data.frame(term = map_raw[, 1], gene = map_raw[, 2])
+
+  if (ppn_map_database == "custom") {
+    if (ncol(map_raw) <= 2) {
+      stop("Custom mapping file must be in wide format (first column as Pathway ID, second column as Pathway Name, subsequent columns as Genes/KOs).")
+    }
+    long_df <- tidyr::pivot_longer(map_raw, cols = -c(1, 2), names_to = "drop", values_to = "gene")
+    TERM2GENE <- data.frame(term = long_df[[1]], gene = long_df$gene, stringsAsFactors = FALSE)
+    TERM2GENE <- TERM2GENE[!is.na(TERM2GENE$gene) & TERM2GENE$gene != "", ]
+  } else {
+    if (ncol(map_raw) > 2) {
+      long_df <- tidyr::pivot_longer(map_raw, cols = -1, names_to = "drop", values_to = "gene")
+      TERM2GENE <- data.frame(term = long_df[[1]], gene = long_df$gene, stringsAsFactors = FALSE)
+      TERM2GENE <- TERM2GENE[!is.na(TERM2GENE$gene) & TERM2GENE$gene != "", ]
+    } else {
+      TERM2GENE <- data.frame(term = map_raw[, 1], gene = map_raw[, 2], stringsAsFactors = FALSE)
+    }
+  }
 
   term_groups <- NULL
   if (ppn_jaccard_method == "map_file") term_groups <- split(TERM2GENE$gene, TERM2GENE$term)

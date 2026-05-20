@@ -9,7 +9,7 @@ con_ppn_int(
   metadata_file,
   map_file,
   output_dir,
-  ppn_da_method = c("deseq2", "edger", "maaslin2", "simple"),
+  ppn_da_method = c("maaslin2", "deseq2", "edger", "simple"),
   ppn_map_database = c("kegg", "metacyc", "custom"),
   ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
   ppn_p_adjust_method = "fdr",

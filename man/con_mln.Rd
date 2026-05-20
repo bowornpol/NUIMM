@@ -14,7 +14,7 @@ con_mln(
   map_file,
   output_dir,
   format = c("universal", "humann", "picrust"),
-  ppn_da_method = c("deseq2", "edger", "maaslin2", "simple"),
+  ppn_da_method = c("maaslin2", "deseq2", "edger", "simple"),
   ppn_map_database = c("kegg", "metacyc", "custom"),
   ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
   ppn_p_adjust_method = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY",
