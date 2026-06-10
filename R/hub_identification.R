@@ -1,6 +1,6 @@
 utils::globalVariables(c("MCC_score", "mcc_score", "name"))
 
-#' Hub Identification using Maximal Clique Centrality (MCC)
+#' Hub Identification using Maximal Clique Centrality (MCC) algorithm
 #'
 #' @details
 #' Identifies influential hub nodes in a multi-layered network using the
