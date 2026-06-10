@@ -2,6 +2,7 @@ utils::globalVariables(c("relative_contribution", "FunctionID", "taxon_function_
 
 #' Internal Microbe-Pathway Network Helper
 #' @keywords internal
+#' @noRd
 #' @param path_con_file Path to contribution file.
 #' @param metadata_file Path to sample metadata CSV.
 #' @param taxonomy_file Path to taxonomy mapping file (optional).
@@ -203,6 +204,7 @@ con_mpn_int <- function(
 
 #' Internal helper: Apply MPN filtering logic
 #' @keywords internal
+#' @noRd
 .mpn_apply_filter <- function(res, mpn_filtering) {
   if (mpn_filtering != "unfiltered") {
     if (mpn_filtering %in% c("mean", "median")) {

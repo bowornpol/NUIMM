@@ -32,6 +32,7 @@ utils::globalVariables(c("coef", "pval", "feature", "ID", "core_enrichment", "ge
 #' @param comparisons_list Optional list of pairwise group comparisons.
 #' @return List with `gsea_paths` and `jaccard_paths` character vectors.
 #' @keywords internal
+#' @noRd
 con_ppn_int <- function(
   gene_abun_file, metadata_file, map_file, output_dir,
   ppn_da_method = c("maaslin2", "maaslin3", "deseq2", "edger", "aldex2", "ancombc", "wilcoxon", "linda"),

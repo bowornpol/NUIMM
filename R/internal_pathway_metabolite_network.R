@@ -1,5 +1,6 @@
 #' Internal Pathway-Metabolite Network Helper
 #' @keywords internal
+#' @noRd
 #' @param pmn_mode Correlation mode: "delta" (default) computes paired deltas then correlates; "pooled" uses all samples from both groups.
 #' @param pmn_filter_by Significance filter: "none", "pvalue", or "padjust".
 #' @param pmn_corr_cutoff Minimum absolute correlation for pathway-metabolite edges.
