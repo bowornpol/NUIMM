@@ -9,8 +9,25 @@ con_mpn_int(
   metadata_file,
   taxonomy_file = NULL,
   output_dir,
-  mpn_filtering = "top10\%"
+  mpn_filtering = "top10\%",
+  mpn_mode = c("delta", "pooled"),
+  comparisons_list = NULL
 )
+}
+\arguments{
+\item{path_con_file}{Path to contribution file.}
+
+\item{metadata_file}{Path to sample metadata CSV.}
+
+\item{taxonomy_file}{Path to taxonomy mapping file (optional).}
+
+\item{output_dir}{Path to output directory.}
+
+\item{mpn_filtering}{Filtering method: "unfiltered", "mean", "median", or "topN%".}
+
+\item{mpn_mode}{Mode: "delta" (default) computes paired changes (Treatment - Baseline) in per-sample relative contribution and tests significance via Wilcoxon; "pooled" combines all samples from both groups and computes relative contribution without statistical testing.}
+
+\item{comparisons_list}{Optional list of pairwise group comparisons. Required for "delta" mode.}
 }
 \description{
 Internal Microbe-Pathway Network Helper

@@ -9,13 +9,24 @@ con_ppn_int(
   metadata_file,
   map_file,
   output_dir,
-  ppn_da_method = c("maaslin2", "deseq2", "edger", "simple"),
+  ppn_da_method = c("maaslin2", "maaslin3", "deseq2", "edger", "aldex2", "ancombc",
+    "wilcoxon"),
   ppn_map_database = c("kegg", "metacyc", "custom"),
   ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
-  ppn_p_adjust_method = "fdr",
+  ppn_min_gs_size = 10,
+  ppn_max_gs_size = 500,
+  ppn_exponent = 1,
+  ppn_eps = 1e-10,
+  ppn_n_perm = 10000,
+  ppn_seed = FALSE,
+  ppn_padjust_method = "fdr",
+  ppn_filter_by = c("none", "pvalue", "padjust"),
   ppn_pvalue_cutoff = 0.05,
+  ppn_padjust_cutoff = 0.05,
   ppn_jaccard_cutoff = 0.2,
-  ppn_jaccard_method = c("gsea_core", "map_file"),
+  ppn_interaction_method = c("gsea_core", "database", "metabolite", "rel_pathway"),
+  ppn_compound_map = c("kegg", "metacyc", "custom"),
+  ppn_compound_custom_map = NULL,
   comparisons_list = NULL
 )
 }
@@ -28,19 +39,39 @@ con_ppn_int(
 
 \item{output_dir}{Path to output directory.}
 
-\item{ppn_da_method}{Differential abundance method: "deseq2", "edger", "maaslin2", or "simple".}
+\item{ppn_da_method}{Differential abundance method: "deseq2", "edger", "maaslin2", "maaslin3", "aldex2", "ancombc", or "wilcoxon".}
 
 \item{ppn_map_database}{Pathway database: "kegg", "metacyc", or "custom".}
 
 \item{ppn_rank_by}{Gene ranking metric: "signed_log_pvalue", "log2foldchange", or "pvalue".}
 
-\item{ppn_p_adjust_method}{P-value adjustment method for GSEA.}
+\item{ppn_min_gs_size}{Minimum number of genes in a pathway to be considered.}
+
+\item{ppn_max_gs_size}{Maximum number of genes in a pathway to be considered.}
+
+\item{ppn_exponent}{Weight of each step in enrichment score calculation.}
+
+\item{ppn_eps}{Boundary for calculating the p-value.}
+
+\item{ppn_n_perm}{Number of permutations.}
+
+\item{ppn_seed}{Logical or numeric. If TRUE or numeric, sets seed for reproducibility.}
+
+\item{ppn_padjust_method}{P-value adjustment method for GSEA.}
+
+\item{ppn_filter_by}{Significance filter for GSEA: "none", "pvalue", or "padjust".}
 
 \item{ppn_pvalue_cutoff}{P-value cutoff for GSEA significance.}
 
+\item{ppn_padjust_cutoff}{Adjusted p-value cutoff for GSEA significance.}
+
 \item{ppn_jaccard_cutoff}{Minimum Jaccard index to retain edges.}
 
-\item{ppn_jaccard_method}{Jaccard source: "gsea_core" or "map_file".}
+\item{ppn_interaction_method}{Method for defining pathway interactions: "gsea_core", "database", "metabolite", or "rel_pathway".}
+
+\item{ppn_compound_map}{Compound-pathway database for metabolite Jaccard: "kegg", "metacyc", or "custom". Only used when ppn_interaction_method = "metabolite".}
+
+\item{ppn_compound_custom_map}{Path to custom compound-pathway CSV. Required when ppn_compound_map = "custom".}
 
 \item{comparisons_list}{Optional list of pairwise group comparisons.}
 }

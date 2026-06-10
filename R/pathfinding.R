@@ -20,14 +20,14 @@ find_path <- function(
   output_directory,
   visualize = TRUE
 ) {
-  message("Starting shortest pathfinding using Dijkstra's algorithm.")
+  message("Initiating shortest path analysis (Dijkstra algorithm).")
 
   input_file_base_name <- tools::file_path_sans_ext(basename(multi_layered_network_file))
   cleaned_input_file_name <- gsub("[^A-Za-z0-9_]", "", input_file_base_name)
 
   if (!dir.exists(output_directory)) dir.create(output_directory, recursive = TRUE)
 
-  message("\n1. Loading network...")
+  message("[1/2] Loading network data.")
   network_data <- read_input_file(multi_layered_network_file, stringsAsFactors = FALSE)
 
   if (all(c("from", "to") %in% colnames(network_data))) {
@@ -50,7 +50,7 @@ find_path <- function(
     })
   }
 
-  message("  Graph created with ", igraph::vcount(g), " nodes and ", igraph::ecount(g), " edges.")
+  message(sprintf("  Network graph instantiated: |V|=%d, |E|=%d.", igraph::vcount(g), igraph::ecount(g)))
 
   # Build nodes data frame for visualization
   nodes_df <- data.frame(
@@ -62,11 +62,7 @@ find_path <- function(
     stringsAsFactors = FALSE
   )
 
-  nodes_df$group <- sapply(nodes_df$id, function(x) {
-    if (grepl("d__|p__|c__|o__|f__|g__|s__|Bacteria", x)) "Microbe"
-    else if (grepl("^ko[0-9]+|PATH", x)) "Pathway"
-    else "Metabolite"
-  })
+  nodes_df$group <- as.character(determine_node_groups(nodes_df$id, network_data, source_col, target_col))
 
   nodes_df$size <- c("Microbe" = 20, "Pathway" = 30, "Metabolite" = 40)[nodes_df$group]
 
@@ -146,7 +142,7 @@ find_path <- function(
           }
       }
 
-      addHTML(panel, '<div style=\"font-size:14px;color:#475569;margin-bottom:10px\"><b>Tip:</b> Scroll to zoom. Drag nodes to perfect layout.<hr style=\"margin:10px 0;border:0;border-top:1px solid #e2e8f0\"></div>');
+      addHTML(panel, '<div style=\"font-size:14px;color:#475569;margin-bottom:10px\"><b>Tip:</b> Scroll to zoom. Hold Ctrl + drag to select multiple nodes. Drag nodes to perfect layout.<hr style=\"margin:10px 0;border:0;border-top:1px solid #e2e8f0\"></div>');
       addHTML(panel, '<div style=\"font-size:14px;color:#0f172a;margin-bottom:10px\"><b>Pathfinding Analysis</b></div>');
 
       var visEngine = this.network;
@@ -161,7 +157,7 @@ find_path <- function(
       var realNodes = allNodes.filter(function(n){ return n.id.indexOf('LEG_') !== 0; });
       realNodes.sort(function(a,b){ return a.label.localeCompare(b.label); });
 
-      // --- Source Node dropdown (Microbes only) ---
+      // Source Node dropdown
       addHTML(panel, '<div style=\"font-size:13px;margin-bottom:4px\"><b>Source Node (Microbe):</b></div>');
       var srcSel = document.createElement('select');
       srcSel.style.cssText = 'width:100%;padding:4px;margin-bottom:8px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;';
@@ -174,7 +170,7 @@ find_path <- function(
       });
       panel.appendChild(srcSel);
 
-      // --- Target Node dropdown (Metabolites only) ---
+      // Target Node dropdown
       addHTML(panel, '<div style=\"font-size:13px;margin-bottom:4px\"><b>Target Node (Metabolite):</b></div>');
       var tgtSel = document.createElement('select');
       tgtSel.style.cssText = 'width:100%;padding:4px;margin-bottom:10px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;';
@@ -193,7 +189,7 @@ find_path <- function(
       if (defaultSrc) srcSel.value = defaultSrc;
       if (defaultTgt) tgtSel.value = defaultTgt;
 
-      // --- Run / Reset buttons ---
+      // Run and Reset buttons
       var btnWrap = document.createElement('div');
       btnWrap.style.cssText = 'display:flex;gap:8px;margin-bottom:10px;';
       var runBtn = document.createElement('button');
@@ -206,7 +202,7 @@ find_path <- function(
       btnWrap.appendChild(resetBtn);
       panel.appendChild(btnWrap);
 
-      // --- Customize Network section ---
+      // Customize Network section
       addHTML(panel, '<hr style=\"margin:10px 0;border:0;border-top:1px solid #e2e8f0\">');
       addHTML(panel, '<div style=\"font-size:14px;color:#0f172a;margin-bottom:8px\"><b>Customize Network</b></div>');
 
@@ -234,7 +230,7 @@ find_path <- function(
         ss.addEventListener('change', updateGraph);
       });
 
-      // --- Save Network button ---
+      // Save Network button
       var saveNetBtn = document.createElement('button');
       saveNetBtn.innerHTML = 'Save Network';
       saveNetBtn.style.cssText = 'margin-top:10px;padding:8px 16px;background:#f1f5f9;color:#0f172a;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-weight:bold;width:100%;margin-bottom:4px;';
@@ -249,7 +245,7 @@ find_path <- function(
       wrapper.appendChild(panel);
       el.appendChild(wrapper);
 
-      // ========== DIJKSTRA ENGINE ==========
+      // Dijkstra Engine
       function runDijkstra(src, tgt) {
         var dist = {}, prev = {}, prevEdge = {}, visited = {};
         realNodes.forEach(function(n) { dist[n.id] = Infinity; prev[n.id] = null; prevEdge[n.id] = null; });
@@ -290,8 +286,17 @@ find_path <- function(
         return {nodes: pathNodes, edges: pathEdgeIds, dirs: pathDirs};
       }
 
-      // ========== EVENT HANDLERS ==========
+      // Event Handlers
       resetBtn.onclick = function() {
+        // Re-add legend nodes if removed
+        if (!nodesDS.get('LEG_MIC')) {
+          var ly = Math.max.apply(null, allNodes.map(function(n){return n.y||0;})) + 400;
+          nodesDS.add([
+            {id:'LEG_MIC',label:'Microbe',title:'',group:'Microbe',size:60,x:-300,y:ly},
+            {id:'LEG_PATH',label:'Pathway',title:'',group:'Pathway',size:60,x:0,y:ly},
+            {id:'LEG_MET',label:'Metabolite',title:'',group:'Metabolite',size:60,x:300,y:ly}
+          ]);
+        }
         var nUpdates = [], eUpdates = [];
         allNodes.forEach(function(n) {
           if (n.id.indexOf('LEG_') === 0) return;
@@ -329,7 +334,7 @@ find_path <- function(
           var pathEdgeSet = {};
           result.edges.forEach(function(id) { pathEdgeSet[id] = true; });
 
-          // Arrange path nodes in evenly-spaced horizontal line (source on left, target on right)
+          // Arrange path nodes horizontally
           var orderedPath = result.nodes.slice().reverse();
           var spacing = 300;
           var totalW = (orderedPath.length - 1) * spacing;
@@ -340,7 +345,7 @@ find_path <- function(
             pathCoords[id] = {x: startX + i * spacing, y: 0};
           });
 
-          // Update nodes: show path nodes at new positions, hide others
+          // Show path nodes and hide others
           var nUpdates = [];
           allNodes.forEach(function(nd) {
             if (nd.id.indexOf('LEG_') === 0) return;
@@ -352,7 +357,7 @@ find_path <- function(
             }
           });
 
-          // Hide non-path edges, show path edges as light grey arrows
+          // Highlight path edges
           var eUpdates = [];
           allEdges.forEach(function(e) {
             if (pathEdgeSet[e.id]) {
@@ -374,6 +379,7 @@ find_path <- function(
       if (defaultSrc && defaultTgt) {
         setTimeout(function() { runBtn.click(); }, 500);
       }
+    ", get_ctrl_drag_js(), "
     }
     ")
 
@@ -389,10 +395,10 @@ find_path <- function(
 
     vis_plot$x$background <- "#ffffff"
     out_html <- file.path(output_directory, paste0("interactive_path_", cleaned_input_file_name, ".html"))
-    htmlwidgets::saveWidget(vis_plot, file = out_html, selfcontained = TRUE, title = "NUIMM")
-    message("  Saved interactive visualization to: ", out_html)
+    save_widget_safe(vis_plot, file = out_html, title = "NUIMM")
+    message("  Visualization saved: ", basename(out_html))
   }
 
-  message("Pathfinding complete.")
+  message("[2/2] Pathfinding algorithm completed.")
   invisible(NULL)
 }

@@ -14,21 +14,27 @@
 #' @param map_file Path to pathway-to-gene mapping file for GSEA.
 #' @param output_dir Path to output directory.
 #' @param format Input data format: "universal", "humann", or "picrust".
-#' @param ppn_da_method Differential abundance method: "deseq2", "edger", "maaslin2", or "simple".
+#' @param ppn_da_method Differential abundance method: "deseq2", "edger", "maaslin2", "maaslin3", "aldex2", "ancombc", or "wilcoxon".
 #' @param ppn_map_database Pathway database: "kegg", "metacyc", or "custom".
 #' @param ppn_rank_by Gene ranking metric for GSEA: "signed_log_pvalue", "log2foldchange", or "pvalue".
-#' @param ppn_p_adjust_method P-value adjustment method for GSEA.
+#' @param ppn_padjust_method P-value adjustment method for GSEA.
 #' @param ppn_pvalue_cutoff P-value cutoff for GSEA significance.
+#' @param ppn_filter_by Significance filter for GSEA: "none", "pvalue", or "padjust".
+#' @param ppn_padjust_cutoff Adjusted p-value cutoff for GSEA significance.
 #' @param ppn_jaccard_cutoff Minimum Jaccard index to retain pathway-pathway edges.
-#' @param ppn_jaccard_method Jaccard calculation source: "gsea_core" or "map_file".
+#' @param ppn_interaction_method Method for defining pathway interactions: "gsea_core", "database", "metabolite", or "rel_pathway".
+#' @param ppn_compound_map Compound-pathway database for metabolite Jaccard: "kegg", "metacyc", or "custom". Only used when ppn_interaction_method = "metabolite".
+#' @param ppn_compound_custom_map Path to custom compound-pathway CSV. Required when ppn_compound_map = "custom".
 #' @param comparisons_list Optional list of pairwise group comparisons.
 #' @param mpn_filtering Microbe-pathway filtering: "unfiltered", "mean", "median", or "topN\%".
+#' @param mpn_mode Microbe-pathway mode: "delta" (default) computes paired changes per subject with Wilcoxon testing; "pooled" combines all samples from both groups.
 #' @param pmn_corr_method Correlation method for pathway-metabolite: "spearman", "pearson", or "kendall".
-#' @param pmn_filter_by Significance filter: "none", "p_value", or "q_value".
+#' @param pmn_filter_by Significance filter: "none", "pvalue", or "padjust".
 #' @param pmn_corr_cutoff Minimum absolute correlation for pathway-metabolite edges.
 #' @param pmn_pvalue_cutoff P-value cutoff for pathway-metabolite edges.
-#' @param pmn_q_value_cutoff Q-value cutoff for pathway-metabolite edges.
-#' @param pmn_p_adjust_method P-value adjustment method for pathway-metabolite correlations.
+#' @param pmn_padjust_cutoff Adjusted p-value cutoff for pathway-metabolite edges.
+#' @param pmn_padjust_method P-value adjustment method for pathway-metabolite correlations.
+#' @param pmn_mode Correlation mode: "delta" (default) computes paired deltas then correlates; "pooled" uses all samples from both groups.
 #' @param visualize Logical. If TRUE, generates interactive HTML visualization.
 #' @param layout_method Network layout algorithm.
 #' @param node_colors Named character vector of colors for each node group.
@@ -43,17 +49,23 @@ con_mln <- function(
   gene_abun_file, path_abun_file, path_con_file, met_con_file, metadata_file,
   taxonomy_file = NULL, map_file, output_dir,
   format = c("universal", "humann", "picrust"),
-  ppn_da_method = c("maaslin2", "deseq2", "edger", "simple"),
+  ppn_da_method = c("maaslin2", "maaslin3", "deseq2", "edger", "aldex2", "ancombc", "wilcoxon"),
   ppn_map_database = c("kegg", "metacyc", "custom"),
   ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
-  ppn_p_adjust_method = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none"),
-  ppn_pvalue_cutoff = 0.05, ppn_jaccard_cutoff = 0.2,
-  ppn_jaccard_method = c("gsea_core", "map_file"), comparisons_list = NULL,
+  ppn_padjust_method = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none"),
+  ppn_filter_by = c("none", "pvalue", "padjust"),
+  ppn_pvalue_cutoff = 0.05, ppn_padjust_cutoff = 0.05, ppn_jaccard_cutoff = 0.2,
+  ppn_interaction_method = c("gsea_core", "database", "metabolite", "rel_pathway"),
+  ppn_compound_map = c("kegg", "metacyc", "custom"), ppn_compound_custom_map = NULL,
+  comparisons_list = NULL,
   mpn_filtering = c("unfiltered", "mean", "median", "top10%", "top25%", "top50%", "top75%"),
+  mpn_mode = c("delta", "pooled"),
   pmn_corr_method = c("spearman", "pearson", "kendall"),
-  pmn_filter_by = c("none", "p_value", "q_value"),
-  pmn_corr_cutoff = 0.3, pmn_pvalue_cutoff = 0.05, pmn_q_value_cutoff = 0.05,
-  pmn_p_adjust_method = "fdr", visualize = TRUE, layout_method = "sugiyama",
+  pmn_mode = c("delta", "pooled"),
+  pmn_filter_by = c("none", "pvalue", "padjust"),
+  pmn_corr_cutoff = 0.3, pmn_pvalue_cutoff = 0.05, pmn_padjust_cutoff = 0.05,
+  pmn_padjust_method = "fdr",
+  visualize = TRUE, layout_method = "sugiyama",
   node_colors = c("Microbe" = "#9AA374", "Pathway" = "#C1ABAD", "Metabolite" = "#4E7286"),
   node_shapes = c("Microbe" = "hexagon", "Pathway" = "dot", "Metabolite" = "diamond"),
   base_node_size = 6, plot_width = 12, plot_height = 10, plot_dpi = 600
@@ -61,11 +73,19 @@ con_mln <- function(
   format <- match.arg(format)
   ppn_da_method <- match.arg(ppn_da_method)
   ppn_map_database <- match.arg(ppn_map_database)
-  ppn_jaccard_method <- match.arg(ppn_jaccard_method)
+  ppn_interaction_method <- match.arg(ppn_interaction_method)
+  ppn_padjust_method <- match.arg(ppn_padjust_method)
+  ppn_compound_map <- match.arg(ppn_compound_map)
+  mpn_filtering <- match.arg(mpn_filtering)
+  mpn_mode <- match.arg(mpn_mode)
+  pmn_corr_method <- match.arg(pmn_corr_method)
+  pmn_mode <- match.arg(pmn_mode)
+  pmn_filter_by <- match.arg(pmn_filter_by)
+  ppn_filter_by <- match.arg(ppn_filter_by)
 
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-  message("--- Preparing Data Processing Pipeline (Format: ", format, ") ---")
+  message("Initializing data processing pipeline (Format: ", format, ").")
   processed_contrib_file <- file.path(output_dir, "processed_contribution.csv")
 
   # Standardized Preprocessing
@@ -96,13 +116,16 @@ con_mln <- function(
     write.csv(long_df[, c("SampleID", "FunctionID", "FeatureID", "TaxonID", "taxon_function_abun")], processed_contrib_file, row.names = FALSE)
   }
 
-  # Execute Layers safely
+  # Execute Layers
   ppn_results <- con_ppn_int(
     gene_abun_file = gene_abun_file, metadata_file = metadata_file, map_file = map_file,
     output_dir = file.path(output_dir, "ppn_output"), ppn_da_method = ppn_da_method,
     ppn_map_database = ppn_map_database, ppn_rank_by = ppn_rank_by,
-    ppn_p_adjust_method = ppn_p_adjust_method, ppn_pvalue_cutoff = ppn_pvalue_cutoff,
-    ppn_jaccard_cutoff = ppn_jaccard_cutoff, ppn_jaccard_method = ppn_jaccard_method,
+    ppn_padjust_method = ppn_padjust_method, 
+    ppn_filter_by = ppn_filter_by, ppn_pvalue_cutoff = ppn_pvalue_cutoff,
+    ppn_padjust_cutoff = ppn_padjust_cutoff,
+    ppn_jaccard_cutoff = ppn_jaccard_cutoff, ppn_interaction_method = ppn_interaction_method,
+    ppn_compound_map = ppn_compound_map, ppn_compound_custom_map = ppn_compound_custom_map,
     comparisons_list = comparisons_list
   )
 
@@ -110,10 +133,15 @@ con_mln <- function(
   for (i in seq_along(ppn_results$gsea_paths)) {
     curr_gsea <- ppn_results$gsea_paths[i]
     curr_jaccard <- ppn_results$jaccard_paths[i]
-    message("\nInitiating multi-layered integration for: ", basename(curr_gsea))
+    message("Initiating multi-layered integration: ", basename(curr_gsea))
 
-    curr_mpn <- con_mpn_int(processed_contrib_file, metadata_file, NULL, file.path(output_dir, "mpn_output"), mpn_filtering)[1]
-    curr_pmn <- con_pmn_int(path_abun_file, met_con_file, curr_gsea, metadata_file, file.path(output_dir, "pmn_output"), pmn_corr_method, pmn_filter_by, pmn_corr_cutoff, pmn_pvalue_cutoff, pmn_q_value_cutoff, pmn_p_adjust_method)[1]
+    curr_mpn <- con_mpn_int(processed_contrib_file, metadata_file, NULL, file.path(output_dir, "mpn_output"), mpn_filtering, mpn_mode, comparisons_list)[1]
+    curr_pmn <- con_pmn_int(
+      path_abun_file, met_con_file, curr_gsea, metadata_file, file.path(output_dir, "pmn_output"),
+      pmn_corr_method, pmn_mode, pmn_filter_by, pmn_corr_cutoff, pmn_pvalue_cutoff, 
+      pmn_padjust_cutoff, pmn_padjust_method,
+      comparisons_list
+    )[1]
 
     res_path <- con_mln_int(
       gsea_file = curr_gsea, mpn_file = curr_mpn, ppn_file = curr_jaccard, pmn_file = curr_pmn,
@@ -125,6 +153,6 @@ con_mln <- function(
     if (!is.null(res_path)) final_outputs <- c(final_outputs, res_path)
   }
 
-  message("\n--- Multi-Layered Network Pipeline Successfully Completed ---")
+  message("Multi-layered network pipeline execution completed.")
   return(final_outputs)
 }

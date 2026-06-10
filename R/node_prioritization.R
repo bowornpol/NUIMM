@@ -26,14 +26,14 @@ node_prior <- function(
   stabilization_window_size = 10,
   visualize = TRUE
 ) {
-  message("Starting node prioritization using LHD algorithm.")
+  message("Initiating node prioritization (Laplacian Heat Diffusion).")
 
   if (!dir.exists(output_directory)) dir.create(output_directory, recursive = TRUE)
 
   input_file_base_name <- tools::file_path_sans_ext(basename(multi_layered_network_file))
   cleaned_input_file_name <- gsub("[^A-Za-z0-9_]", "", input_file_base_name)
 
-  message("\n1. Loading network from: ", multi_layered_network_file)
+  message("[1/1] Loading network data.")
   if (!file.exists(multi_layered_network_file)) stop("File not found.")
 
   network_data <- read_input_file(multi_layered_network_file, stringsAsFactors = FALSE)
@@ -74,15 +74,7 @@ node_prior <- function(
     stringsAsFactors = FALSE
   )
 
-  nodes_df$group <- sapply(nodes_df$id, function(x) {
-    if (grepl("d__|p__|c__|o__|f__|g__|s__|Bacteria", x)) {
-      "Microbe"
-    } else if (grepl("^ko[0-9]+|PATH", x)) {
-      "Pathway"
-    } else {
-      "Metabolite"
-    }
-  })
+  nodes_df$group <- as.character(determine_node_groups(nodes_df$id, network_data, source_col, target_col))
   nodes_df$size <- c("Microbe" = 20, "Pathway" = 30, "Metabolite" = 40)[nodes_df$group]
 
   nodes_df$x <- 0
@@ -161,7 +153,7 @@ node_prior <- function(
           }
       }
 
-      addHTML(panel, '<div style=\"font-size:14px;color:#475569;margin-bottom:10px\"><b>Tip:</b> Scroll to zoom. Drag nodes to perfect layout.<hr style=\"margin:10px 0;border:0;border-top:1px solid #e2e8f0\"></div>');
+      addHTML(panel, '<div style=\"font-size:14px;color:#475569;margin-bottom:10px\"><b>Tip:</b> Scroll to zoom. Hold Ctrl + drag to select multiple nodes. Drag nodes to perfect layout.<hr style=\"margin:10px 0;border:0;border-top:1px solid #e2e8f0\"></div>');
       addHTML(panel, '<div style=\"font-size:14px;color:#0f172a;margin-bottom:10px\"><b>Node Prioritization Analysis</b></div>');
 
       var visEngine = this.network;
@@ -176,7 +168,7 @@ node_prior <- function(
       var metNodes = allNodes.filter(function(n){ return n.group === 'Metabolite' && n.id.indexOf('LEG_') !== 0; });
       metNodes.sort(function(a,b){ return a.label.localeCompare(b.label); });
 
-      // --- Seed Selection (Checkboxes) ---
+      // Seed Selection
       addHTML(panel, '<div style=\"font-size:13px;margin-bottom:4px\"><b>Select Seed Node (Metabolite):</b></div>');
       var seedContainer = document.createElement('div');
       seedContainer.style.cssText = 'width:100%;height:100px;overflow-y:auto;border:1px solid #cbd5e1;padding:4px;margin-bottom:8px;font-size:12px;background:#fff;';
@@ -195,7 +187,7 @@ node_prior <- function(
       });
       panel.appendChild(seedContainer);
 
-      // --- Filter Toggle ---
+      // Filter Toggle
       var filterWrap = document.createElement('div');
       filterWrap.style.cssText = 'font-size:13px;margin-bottom:8px;';
       filterWrap.innerHTML = '<b>Filter Other Metabolite Edges:</b> ';
@@ -205,7 +197,7 @@ node_prior <- function(
       filterWrap.appendChild(filterSel);
       panel.appendChild(filterWrap);
 
-      // --- Run / Reset Buttons ---
+      // Run and Reset Buttons
       var btnWrap = document.createElement('div');
       btnWrap.style.cssText = 'display:flex;gap:8px;margin-bottom:10px;';
       var runBtn = document.createElement('button');
@@ -218,7 +210,7 @@ node_prior <- function(
       btnWrap.appendChild(resetBtn);
       panel.appendChild(btnWrap);
 
-      // --- Post-analysis controls (hidden) ---
+      // Post-analysis controls
       var postWrap = document.createElement('div');
       postWrap.style.display = 'none';
 
@@ -232,11 +224,21 @@ node_prior <- function(
       pctLabel.style.cssText = 'font-size:12px;text-align:center;margin-bottom:8px;';
       pctLabel.innerHTML = '100%';
       postWrap.appendChild(pctLabel);
+      // Top Microbes input
+      var topNWrap = document.createElement('div');
+      topNWrap.style.cssText = 'margin-bottom:8px;font-size:13px;';
+      topNWrap.innerHTML = '<b>Top Microbes:</b> ';
+      var microbeInput = document.createElement('input');
+      microbeInput.type = 'number'; microbeInput.value = '5';
+      microbeInput.min = 1;
+      microbeInput.style.cssText = 'width:50px;margin-right:10px;padding:2px;border:1px solid #cbd5e1;border-radius:4px;';
+      topNWrap.appendChild(microbeInput);
+      postWrap.appendChild(topNWrap);
 
       addHTML(postWrap, '<div style=\"font-size:13px;margin-bottom:4px\"><b>Heat Color Tone:</b></div>');
       var palSel = document.createElement('select');
       palSel.style.cssText = 'width:100%;padding:2px;border-radius:4px;border:1px solid #cbd5e1;margin-bottom:8px;';
-      ['Plasma','Viridis','Heat','Blues','Reds'].forEach(function(p){ var o=document.createElement('option'); o.value=p; o.text=p; palSel.appendChild(o); });
+      ['Plasma','Viridis','Blues','Reds'].forEach(function(p){ var o=document.createElement('option'); o.value=p; o.text=p; palSel.appendChild(o); });
       postWrap.appendChild(palSel);
 
       var legendWrap = document.createElement('div');
@@ -253,7 +255,7 @@ node_prior <- function(
       legendWrap.appendChild(legLabels);
       postWrap.appendChild(legendWrap);
 
-      // --- Correlation plot canvas ---
+      // Correlation plot canvas
       addHTML(postWrap, '<div style=\"font-size:13px;margin-bottom:4px\"><b>Stabilization Curve</b></div>');
       var corrCanvas = document.createElement('canvas');
       corrCanvas.width = 1120; corrCanvas.height = 560;
@@ -265,7 +267,7 @@ node_prior <- function(
 
       panel.appendChild(postWrap);
 
-      // --- Customize Network section ---
+      // Customize Network section
       addHTML(panel, '<hr style=\"margin:10px 0;border:0;border-top:1px solid #e2e8f0\">');
       addHTML(panel, '<div style=\"font-size:14px;color:#0f172a;margin-bottom:8px\"><b>Customize Network</b></div>');
 
@@ -282,7 +284,7 @@ node_prior <- function(
         ss.addEventListener('change',upd);
       });
 
-      // --- Save buttons ---
+      // Save buttons
       var saveNetBtn = document.createElement('button');
       saveNetBtn.innerHTML = 'Save Network';
       saveNetBtn.style.cssText = 'margin-top:10px;padding:8px 16px;background:#f1f5f9;color:#0f172a;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-weight:bold;width:100%;margin-bottom:4px;';
@@ -326,11 +328,10 @@ node_prior <- function(
       wrapper.appendChild(panel);
       el.appendChild(wrapper);
 
-      // ========== COLOR MAPS ==========
+      // Color Maps
       var colorMap = {
         'Plasma': [[13,8,135],[126,3,168],[204,71,120],[248,149,64],[240,249,33]],
         'Viridis': [[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]],
-        'Heat': [[128,0,0],[255,0,0],[255,165,0],[255,255,0],[255,255,255]],
         'Blues': [[247,251,255],[198,219,239],[107,174,214],[33,113,181],[8,48,107]],
         'Reds': [[255,245,240],[254,224,210],[252,146,114],[222,45,38],[165,15,21]]
       };
@@ -346,7 +347,7 @@ node_prior <- function(
         return 'linear-gradient(to right,'+p.join(',')+')';
       }
 
-      // ========== LHD ENGINE ==========
+      // LHD Engine
       var DT = ", time_step_interval, ";
       var STAB_THRESH = ", stabilization_threshold, ";
       var STAB_WIN = ", stabilization_window_size, ";
@@ -483,13 +484,22 @@ node_prior <- function(
         ctx.restore();
       }
 
-      function applyVisualization(result, topPct, pal) {
+      function applyVisualization(result, topPct, pal, topMicrobeCount) {
         var scores = result.scores;
         var count = Math.max(1, Math.ceil(scores.length * topPct / 100));
         var topScores = scores.slice(0, count);
         var topMap = {}; topScores.forEach(function(s){topMap[s.id]=s;});
 
-        var minH=topScores[topScores.length-1].heat, maxH=topScores[0].heat;
+        var minH = topScores[topScores.length-1] ? topScores[topScores.length-1].heat : 0;
+        var maxH = topScores[0] ? topScores[0].heat : 1;
+
+        // Highlight top microbes
+        var microbeScores = scores.filter(function(s) { return s.group === 'Microbe'; });
+        var topMicrobeCountVal = topMicrobeCount !== null && topMicrobeCount !== undefined && !isNaN(topMicrobeCount) ? topMicrobeCount : 5;
+        var topMicrobeIds = {};
+        microbeScores.slice(0, topMicrobeCountVal).forEach(function(s) {
+          topMicrobeIds[s.id] = true;
+        });
 
         var micN=[],pathN=[],metN2=[];
         topScores.forEach(function(s){
@@ -508,7 +518,22 @@ node_prior <- function(
           if(nd.id.indexOf('LEG_')===0) return;
           if(topMap[nd.id]){
             var s=topMap[nd.id], c=getColor(s.heat,minH,maxH,pal);
-            updates.push({id:nd.id, hidden:false, x:s.nx, y:s.ny, color:{background:c,border:'#475569',highlight:c}});
+            var isHighlighted = (s.group === 'Microbe' && topMicrobeIds[nd.id]);
+            updates.push({
+              id: nd.id, 
+              hidden: false, 
+              x: s.nx, 
+              y: s.ny, 
+              borderWidth: isHighlighted ? 4 : 1.5,
+              color: {
+                background: c, 
+                border: isHighlighted ? '#22c55e' : '#475569', 
+                highlight: {
+                  background: c,
+                  border: isHighlighted ? '#22c55e' : '#475569'
+                }
+              }
+            });
           } else {
             updates.push({id:nd.id, hidden:true});
           }
@@ -522,7 +547,7 @@ node_prior <- function(
         if(visEngine && visEngine.fit) visEngine.fit({animation:{duration:1000,easingFunction:'easeInOutQuad'}});
       }
 
-      // ========== EVENT HANDLERS ==========
+      // Event Handlers
       runBtn.onclick = function() {
         var selected = [];
         seedCheckboxes.forEach(function(cb) {
@@ -530,7 +555,7 @@ node_prior <- function(
         });
         if(selected.length===0){ alert('Please select at least one seed node.'); return; }
 
-        // Ensure legend nodes are physically removed from the network
+        // Remove legend nodes
         if (nodesDS.get('LEG_MIC')) nodesDS.remove(['LEG_MIC', 'LEG_PATH', 'LEG_MET']);
 
         runBtn.innerHTML = 'Running...'; runBtn.disabled = true;
@@ -538,7 +563,10 @@ node_prior <- function(
           lastHeatResult = runLHD(selected, filterSel.value==='YES');
           drawCorrPlot(lastHeatResult.corrs, lastHeatResult.times, lastHeatResult.stabT, lastHeatResult.seedLabels);
           stabInfo.innerHTML = 'Stabilization at t = '+lastHeatResult.stabT.toFixed(4)+' | Seeds: '+lastHeatResult.seedLabels.join(', ');
-          applyVisualization(lastHeatResult, parseInt(pctSlider.value), palSel.value);
+          
+          var val = parseInt(microbeInput.value);
+          applyVisualization(lastHeatResult, parseInt(pctSlider.value), palSel.value, isNaN(val) ? null : val);
+          
           postWrap.style.display = 'block';
           saveCsvBtn.style.display = 'block';
           savePlotBtn.style.display = 'block';
@@ -548,10 +576,24 @@ node_prior <- function(
 
       pctSlider.oninput = function() {
         pctLabel.innerHTML = pctSlider.value + '%';
-        if(lastHeatResult) applyVisualization(lastHeatResult, parseInt(pctSlider.value), palSel.value);
+        if(lastHeatResult) {
+          var val = parseInt(microbeInput.value);
+          applyVisualization(lastHeatResult, parseInt(pctSlider.value), palSel.value, isNaN(val) ? null : val);
+        }
       };
+      
+      microbeInput.oninput = function() {
+        if(lastHeatResult) {
+          var val = parseInt(microbeInput.value);
+          applyVisualization(lastHeatResult, parseInt(pctSlider.value), palSel.value, isNaN(val) ? null : val);
+        }
+      };
+      
       palSel.onchange = function() {
-        if(lastHeatResult) applyVisualization(lastHeatResult, parseInt(pctSlider.value), palSel.value);
+        if(lastHeatResult) {
+          var val = parseInt(microbeInput.value);
+          applyVisualization(lastHeatResult, parseInt(pctSlider.value), palSel.value, isNaN(val) ? null : val);
+        }
       };
 
       saveCsvBtn.onclick = function() {
@@ -580,7 +622,7 @@ node_prior <- function(
         allNodes.forEach(function(n) {
           if (n.id.indexOf('LEG_') === 0) return;
           var ic = initialCoords[n.id];
-          nUpdates.push({id:n.id, hidden:false, color:null, x:ic?ic.x:0, y:ic?ic.y:0});
+          nUpdates.push({id:n.id, hidden:false, color:null, borderWidth:1.5, x:ic?ic.x:0, y:ic?ic.y:0});
         });
         allEdges.forEach(function(e) {
           eUpdates.push({id:e.id, hidden:false, color:null, width:null});
@@ -590,9 +632,11 @@ node_prior <- function(
         postWrap.style.display = 'none';
         saveCsvBtn.style.display = 'none';
         savePlotBtn.style.display = 'none';
+        microbeInput.value = '5';
         lastHeatResult = null;
         if(visEngine && visEngine.fit) visEngine.fit({animation:{duration:1000,easingFunction:'easeInOutQuad'}});
       };
+    ", get_ctrl_drag_js(), "
     }
     ")
 
@@ -608,9 +652,9 @@ node_prior <- function(
 
     vis_plot$x$background <- "#ffffff"
     out_html <- file.path(output_directory, paste0("interactive_node_prior_", cleaned_input_file_name, ".html"))
-    htmlwidgets::saveWidget(vis_plot, file = out_html, selfcontained = TRUE, title = "NUIMM")
+    save_widget_safe(vis_plot, file = out_html, title = "NUIMM")
   }
 
-  message("Node prioritization complete.")
+  message("Node prioritization completed.")
   invisible(NULL)
 }

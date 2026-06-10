@@ -11,12 +11,27 @@ con_pmn_int(
   metadata_file,
   output_dir,
   pmn_corr_method = c("spearman", "pearson", "kendall"),
-  pmn_filter_by = "p_value",
+  pmn_mode = c("delta", "pooled"),
+  pmn_filter_by = c("none", "pvalue", "padjust"),
   pmn_corr_cutoff = 0.3,
   pmn_pvalue_cutoff = 0.05,
-  pmn_q_value_cutoff = 0.05,
-  pmn_p_adjust_method = "fdr"
+  pmn_padjust_cutoff = 0.05,
+  pmn_padjust_method = "fdr",
+  comparisons_list = NULL
 )
+}
+\arguments{
+\item{pmn_mode}{Correlation mode: "delta" (default) computes paired deltas then correlates; "pooled" uses all samples from both groups.}
+
+\item{pmn_filter_by}{Significance filter: "none", "pvalue", or "padjust".}
+
+\item{pmn_corr_cutoff}{Minimum absolute correlation for pathway-metabolite edges.}
+
+\item{pmn_pvalue_cutoff}{P-value cutoff for pathway-metabolite edges.}
+
+\item{pmn_padjust_cutoff}{Adjusted p-value cutoff for pathway-metabolite edges.}
+
+\item{pmn_padjust_method}{P-value adjustment method for pathway-metabolite correlations.}
 }
 \description{
 Internal Pathway-Metabolite Network Helper
