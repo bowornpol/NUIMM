@@ -40,6 +40,7 @@ clean_taxonomy <- function(tax_string) {
 #' @param plot_dpi Output image resolution (DPI).
 #' @return Path to the output HTML or CSV file.
 #' @keywords internal
+#' @noRd
 con_mln_int <- function(
   gsea_file, mpn_file, ppn_file, pmn_file, output_dir,
   visualize, layout_method, node_colors, node_shapes, base_node_size, plot_width, plot_height, plot_dpi,

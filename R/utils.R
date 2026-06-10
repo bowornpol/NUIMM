@@ -7,6 +7,7 @@
 #' @param ... Additional arguments to pass to the reader.
 #' @return A data frame containing the data from the specified file.
 #' @keywords internal
+#' @noRd
 read_input_file <- function(file_path, file_type = NULL, ...) {
   if (!file.exists(file_path)) {
     stop(paste("File not found:", file_path))
@@ -40,6 +41,7 @@ read_input_file <- function(file_path, file_type = NULL, ...) {
 
 #' Get JavaScript for Ctrl-drag Multi-Node Selection
 #' @keywords internal
+#' @noRd
 get_ctrl_drag_js <- function() {
   "
   // Ctrl-Drag Multi-Node Selection
@@ -146,6 +148,7 @@ get_ctrl_drag_js <- function() {
 
 #' Determine node groups from network data and falls back to regex
 #' @keywords internal
+#' @noRd
 determine_node_groups <- function(nodes, network_data, source_col, target_col) {
   groups <- rep("Metabolite", length(nodes))
   names(groups) <- nodes
@@ -189,6 +192,7 @@ determine_node_groups <- function(nodes, network_data, source_col, target_col) {
 #' @param file Output file path.
 #' @param title HTML page title.
 #' @keywords internal
+#' @noRd
 save_widget_safe <- function(widget, file, title = "NUIMM") {
   has_pandoc <- tryCatch({
     info <- rmarkdown::find_pandoc()
