@@ -2,7 +2,7 @@
 % Please edit documentation in R/node_prioritization.R
 \name{node_prior}
 \alias{node_prior}
-\title{Node Prioritization using Laplacian Heat Diffusion (LHD)}
+\title{Node Prioritization using Laplacian Heat Diffusion (LHD) algorithm}
 \usage{
 node_prior(
   multi_layered_network_file,
@@ -30,7 +30,7 @@ node_prior(
 Invisible NULL.
 }
 \description{
-Node Prioritization using Laplacian Heat Diffusion (LHD)
+Node Prioritization using Laplacian Heat Diffusion (LHD) algorithm
 }
 \details{
 Implements LHD on a multi-layered network to prioritize nodes.

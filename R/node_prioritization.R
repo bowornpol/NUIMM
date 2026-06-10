@@ -3,7 +3,7 @@ utils::globalVariables(c(
   "Node_A", "Node_B", "edge_score", "Heat_score", "Time", "Correlation", "type"
 ))
 
-#' Node Prioritization using Laplacian Heat Diffusion (LHD)
+#' Node Prioritization using Laplacian Heat Diffusion (LHD) algorithm
 #'
 #' @details
 #' Implements LHD on a multi-layered network to prioritize nodes.

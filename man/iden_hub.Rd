@@ -2,7 +2,7 @@
 % Please edit documentation in R/hub_identification.R
 \name{iden_hub}
 \alias{iden_hub}
-\title{Hub Identification using Maximal Clique Centrality (MCC)}
+\title{Hub Identification using Maximal Clique Centrality (MCC) algorithm}
 \usage{
 iden_hub(
   multi_layered_network_file,
@@ -25,7 +25,7 @@ iden_hub(
 Invisible NULL. Results are written to `output_directory`.
 }
 \description{
-Hub Identification using Maximal Clique Centrality (MCC)
+Hub Identification using Maximal Clique Centrality (MCC) algorithm
 }
 \details{
 Identifies influential hub nodes in a multi-layered network using the
