@@ -12,7 +12,7 @@ utils::globalVariables(c("coef", "pval", "feature", "ID", "core_enrichment", "ge
 #' @param metadata_file Path to sample metadata CSV.
 #' @param map_file Path to pathway-to-gene mapping file.
 #' @param output_dir Path to output directory.
-#' @param ppn_da_method Differential abundance method: "deseq2", "edger", "maaslin2", "maaslin3", "aldex2", "ancombc", or "wilcoxon".
+#' @param ppn_da_method Differential abundance method: "deseq2", "edger", "maaslin2", "maaslin3", "aldex2", "ancombc", "wilcoxon", or "linda".
 #' @param ppn_map_database Pathway database: "kegg", "metacyc", or "custom".
 #' @param ppn_rank_by Gene ranking metric: "signed_log_pvalue", "log2foldchange", or "pvalue".
 #' @param ppn_min_gs_size Minimum number of genes in a pathway to be considered.
@@ -34,7 +34,7 @@ utils::globalVariables(c("coef", "pval", "feature", "ID", "core_enrichment", "ge
 #' @keywords internal
 con_ppn_int <- function(
   gene_abun_file, metadata_file, map_file, output_dir,
-  ppn_da_method = c("maaslin2", "maaslin3", "deseq2", "edger", "aldex2", "ancombc", "wilcoxon"),
+  ppn_da_method = c("maaslin2", "maaslin3", "deseq2", "edger", "aldex2", "ancombc", "wilcoxon", "linda"),
   ppn_map_database = c("kegg", "metacyc", "custom"),
   ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
   ppn_min_gs_size = 10, ppn_max_gs_size = 500, ppn_exponent = 1,
@@ -250,6 +250,23 @@ con_ppn_int <- function(
       # Using raw p-values for GSEA correction
       fc <- (rowMeans(grp2_vals) + 1e-6) / (rowMeans(grp1_vals) + 1e-6)
       res_df <- data.frame(gene = rownames(sub_abun), log2FoldChange = log2(fc), pvalue = pvals)
+    } else if (ppn_da_method == "linda") {
+      if (!requireNamespace("LinDA", quietly = TRUE) && !requireNamespace("MicrobiomeStat", quietly = TRUE)) {
+        stop("Install 'LinDA' from GitHub or 'MicrobiomeStat' from CRAN for LinDA method.")
+      }
+      sub_meta$class <- factor(sub_meta$class, levels = c(cond1, cond2))
+      if (requireNamespace("LinDA", quietly = TRUE)) {
+        linda_res <- LinDA::linda(sub_abun, sub_meta, formula = '~class', prev.cut = 0, lib.cut = 0)
+      } else {
+        linda_res <- MicrobiomeStat::linda(sub_abun, sub_meta, formula = '~class', prev.cut = 0, lib.cut = 0)
+      }
+      res_table <- linda_res$output[[1]]
+      res_df <- data.frame(
+        gene = rownames(res_table),
+        log2FoldChange = res_table$log2FoldChange,
+        pvalue = res_table$pvalue,
+        stringsAsFactors = FALSE
+      )
     }
     
     res_df <- res_df[!is.na(res_df$pvalue) & !is.na(res_df$log2FoldChange), ]

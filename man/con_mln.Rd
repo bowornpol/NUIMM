@@ -15,7 +15,7 @@ con_mln(
   output_dir,
   format = c("universal", "humann", "picrust"),
   ppn_da_method = c("maaslin2", "maaslin3", "deseq2", "edger", "aldex2", "ancombc",
-    "wilcoxon"),
+    "wilcoxon", "linda"),
   ppn_map_database = c("kegg", "metacyc", "custom"),
   ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
   ppn_padjust_method = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY",
@@ -67,7 +67,7 @@ con_mln(
 
 \item{format}{Input data format: "universal", "humann", or "picrust".}
 
-\item{ppn_da_method}{Differential abundance method: "deseq2", "edger", "maaslin2", "maaslin3", "aldex2", "ancombc", or "wilcoxon".}
+\item{ppn_da_method}{Differential abundance method: "deseq2", "edger", "maaslin2", "maaslin3", "aldex2", "ancombc", "wilcoxon", or "linda".}
 
 \item{ppn_map_database}{Pathway database: "kegg", "metacyc", or "custom".}
 

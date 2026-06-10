@@ -14,7 +14,7 @@
 #' @param map_file Path to pathway-to-gene mapping file for GSEA.
 #' @param output_dir Path to output directory.
 #' @param format Input data format: "universal", "humann", or "picrust".
-#' @param ppn_da_method Differential abundance method: "deseq2", "edger", "maaslin2", "maaslin3", "aldex2", "ancombc", or "wilcoxon".
+#' @param ppn_da_method Differential abundance method: "deseq2", "edger", "maaslin2", "maaslin3", "aldex2", "ancombc", "wilcoxon", or "linda".
 #' @param ppn_map_database Pathway database: "kegg", "metacyc", or "custom".
 #' @param ppn_rank_by Gene ranking metric for GSEA: "signed_log_pvalue", "log2foldchange", or "pvalue".
 #' @param ppn_padjust_method P-value adjustment method for GSEA.
@@ -49,7 +49,7 @@ con_mln <- function(
   gene_abun_file, path_abun_file, path_con_file, met_con_file, metadata_file,
   taxonomy_file = NULL, map_file, output_dir,
   format = c("universal", "humann", "picrust"),
-  ppn_da_method = c("maaslin2", "maaslin3", "deseq2", "edger", "aldex2", "ancombc", "wilcoxon"),
+  ppn_da_method = c("maaslin2", "maaslin3", "deseq2", "edger", "aldex2", "ancombc", "wilcoxon", "linda"),
   ppn_map_database = c("kegg", "metacyc", "custom"),
   ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
   ppn_padjust_method = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none"),

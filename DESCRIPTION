@@ -14,6 +14,8 @@ License: GPL-3
 URL: https://github.com/bowornpol/NUIMM
 BugReports: https://github.com/bowornpol/NUIMM/issues
 Imports: 
+    ALDEx2,
+    ANCOMBC,
     clusterProfiler,
     data.table,
     DESeq2,
@@ -23,15 +25,22 @@ Imports:
     ggraph,
     htmlwidgets,
     igraph,
+    LinDA,
     Maaslin2,
+    maaslin3,
     matrixTests,
+    MicrobiomeStat,
     stats,
     stringr,
     tidyr,
     tools,
+    TreeSummarizedExperiment,
     utils,
     visNetwork,
     WGCNA
 Encoding: UTF-8
 LazyData: true
 Config/roxygen2/version: 8.0.0
+Remotes: 
+    zhouhj1994/LinDA,
+    biobakery/maaslin3

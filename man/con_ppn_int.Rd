@@ -10,7 +10,7 @@ con_ppn_int(
   map_file,
   output_dir,
   ppn_da_method = c("maaslin2", "maaslin3", "deseq2", "edger", "aldex2", "ancombc",
-    "wilcoxon"),
+    "wilcoxon", "linda"),
   ppn_map_database = c("kegg", "metacyc", "custom"),
   ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
   ppn_min_gs_size = 10,
@@ -39,7 +39,7 @@ con_ppn_int(
 
 \item{output_dir}{Path to output directory.}
 
-\item{ppn_da_method}{Differential abundance method: "deseq2", "edger", "maaslin2", "maaslin3", "aldex2", "ancombc", or "wilcoxon".}
+\item{ppn_da_method}{Differential abundance method: "deseq2", "edger", "maaslin2", "maaslin3", "aldex2", "ancombc", "wilcoxon", or "linda".}
 
 \item{ppn_map_database}{Pathway database: "kegg", "metacyc", or "custom".}
 
