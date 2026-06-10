@@ -21,7 +21,7 @@ iden_hub <- function(
   top_n_hubs = 5,
   visualize = TRUE
 ) {
-  message("Starting hub identification using Maximal Clique Centrality (MCC) algorithm.")
+  message("Initiating hub identification (Maximal Clique Centrality).")
 
   input_file_base_name <- tools::file_path_sans_ext(basename(multi_layered_network_file))
   cleaned_input_file_name <- gsub("[^A-Za-z0-9_]", "", input_file_base_name)
@@ -30,7 +30,7 @@ iden_hub <- function(
     dir.create(output_directory, recursive = TRUE)
   }
 
-  message("\n1. Loading network from: ", multi_layered_network_file)
+  message("[1/5] Loading network data.")
   if (!file.exists(multi_layered_network_file)) stop("File not found.")
 
   network_data <- read_input_file(multi_layered_network_file, stringsAsFactors = FALSE)
@@ -46,15 +46,15 @@ iden_hub <- function(
   }
 
   g <- igraph::graph_from_data_frame(d = network_data[, c(source_col, target_col)], directed = FALSE)
-  message("  Graph created with ", igraph::vcount(g), " nodes.")
+  message(sprintf("  Network graph instantiated: |V|=%d.", igraph::vcount(g)))
 
-  message("\n2. Finding maximal cliques...")
+  message("[2/5] Computing maximal cliques.")
   cliques <- tryCatch(
     igraph::max_cliques(g),
     error = function(e) stop("Error finding cliques: ", e$message)
   )
 
-  message("\n3. Calculating MCC scores...")
+  message("[3/5] Calculating MCC scores.")
   mcc_scores <- setNames(numeric(igraph::vcount(g)), igraph::V(g)$name)
 
   for (clique_nodes_indices in cliques) {
@@ -85,18 +85,18 @@ iden_hub <- function(
     }
   }
 
-  message("\n4. Ranking nodes and exporting full results...")
+  message("[4/5] Ranking nodes and exporting results.")
   full_results_df <- dplyr::arrange(
     data.frame(Node = names(mcc_scores), MCC_score = mcc_scores, stringsAsFactors = FALSE),
     dplyr::desc(MCC_score)
   )
 
   output_filepath <- file.path(output_directory, paste0("hub_mcc_", cleaned_input_file_name, ".csv"))
-  message("  Saving CSV results to: ", output_filepath)
+  message("  Results saved: ", basename(output_filepath))
   write.csv(full_results_df, output_filepath, row.names = FALSE)
 
   if (visualize) {
-    message("\n5. Generating interactive HTML visualization...")
+    message("[5/5] Generating network visualization.")
     if (!requireNamespace("visNetwork", quietly = TRUE) || !requireNamespace("htmlwidgets", quietly = TRUE)) {
       stop("To use visualize=TRUE, you must install 'visNetwork' and 'htmlwidgets'.")
     }
@@ -111,15 +111,7 @@ iden_hub <- function(
       stringsAsFactors = FALSE
     )
 
-    nodes_df$group <- sapply(nodes_df$id, function(x) {
-      if (grepl("d__|p__|c__|o__|f__|g__|s__|Bacteria", x)) {
-        "Microbe"
-      } else if (grepl("^ko[0-9]+|PATH", x)) {
-        "Pathway"
-      } else {
-        "Metabolite"
-      }
-    })
+    nodes_df$group <- as.character(determine_node_groups(nodes_df$id, network_data, source_col, target_col))
 
     nodes_df$size <- c("Microbe" = 20, "Pathway" = 30, "Metabolite" = 40)[nodes_df$group]
 
@@ -136,7 +128,7 @@ iden_hub <- function(
       edges_df$title <- "<div style='padding:10px; font-family:sans-serif;'><b>Value:</b> 1</div>"
     }
 
-    # Node coordinate initialization for circle layout
+    # Initialize node coordinates for circular layout
     nodes_df$x <- 0
     nodes_df$y <- 0
 
@@ -213,7 +205,7 @@ iden_hub <- function(
           }
       }
 
-      addHTML(panel, '<div style=\"font-size:14px;color:#475569;margin-bottom:10px\"><b>Tip:</b> Scroll to zoom. Drag nodes to perfect layout.<hr style=\"margin:10px 0;border:0;border-top:1px solid #e2e8f0\"></div>');
+      addHTML(panel, '<div style=\"font-size:14px;color:#475569;margin-bottom:10px\"><b>Tip:</b> Scroll to zoom. Hold Ctrl + drag to select multiple nodes. Drag nodes to perfect layout.<hr style=\"margin:10px 0;border:0;border-top:1px solid #e2e8f0\"></div>');
       addHTML(panel, '<div style=\"font-size:14px;color:#0f172a;margin-bottom:10px\"><b>Hub Identification Analysis</b></div>');
 
       var visEngine = this.network;
@@ -225,7 +217,7 @@ iden_hub <- function(
       var initialCoords = {};
       allNodes.forEach(function(n) { initialCoords[n.id] = {x:n.x, y:n.y}; });
 
-      // --- Top N Hubs input ---
+      // Top Hubs input
       var topNWrap = document.createElement('div');
       topNWrap.style.cssText = 'margin-bottom:8px;font-size:13px;';
       topNWrap.innerHTML = '<b>Top Hubs:</b> ';
@@ -235,7 +227,7 @@ iden_hub <- function(
       topNWrap.appendChild(topNInput);
       panel.appendChild(topNWrap);
 
-      // --- Run / Reset buttons ---
+      // Run and Reset buttons
       var btnWrap = document.createElement('div');
       btnWrap.style.cssText = 'display:flex;gap:8px;margin-bottom:10px;';
       var runBtn = document.createElement('button');
@@ -248,17 +240,17 @@ iden_hub <- function(
       btnWrap.appendChild(resetBtn);
       panel.appendChild(btnWrap);
 
-      // --- Palette selector (hidden until Run) ---
+      // Palette selector
       var palWrap = document.createElement('div');
       palWrap.style.display = 'none';
       addHTML(palWrap, '<div style=\"font-size:13px;margin-bottom:4px\"><b>Hub Color Tone:</b></div>');
       var palSel = document.createElement('select');
       palSel.style.cssText = 'width:100%;padding:2px;border-radius:4px;border:1px solid #cbd5e1;margin-bottom:8px;';
-      ['Plasma','Viridis','Heat','Blues','Reds'].forEach(function(p){ var o=document.createElement('option'); o.value=p; o.text=p; palSel.appendChild(o); });
+      ['Plasma','Viridis','Blues','Reds'].forEach(function(p){ var o=document.createElement('option'); o.value=p; o.text=p; palSel.appendChild(o); });
       palWrap.appendChild(palSel);
       panel.appendChild(palWrap);
 
-      // --- Legend (hidden until Run) ---
+      // Legend
       var legendWrap = document.createElement('div');
       legendWrap.style.cssText = 'margin-bottom:8px;font-size:12px;display:none;';
       legendWrap.innerHTML = '<div style=\"text-align:center;margin-bottom:5px\"><b>MCC Score</b></div>';
@@ -273,7 +265,7 @@ iden_hub <- function(
       legendWrap.appendChild(legLabels);
       panel.appendChild(legendWrap);
 
-      // --- Customize Network section ---
+      // Customize Network section
       addHTML(panel, '<hr style=\"margin:10px 0;border:0;border-top:1px solid #e2e8f0\">');
       addHTML(panel, '<div style=\"font-size:14px;color:#0f172a;margin-bottom:8px\"><b>Customize Network</b></div>');
 
@@ -289,7 +281,7 @@ iden_hub <- function(
         ss.addEventListener('change', function(){ var opts={groups:{}}; opts.groups[g.name]={shape:ss.value}; if(visEngine&&visEngine.setOptions) visEngine.setOptions(opts); });
       });
 
-      // --- Save Network button ---
+      // Save Network button
       var saveNetBtn = document.createElement('button');
       saveNetBtn.innerHTML = 'Save Network';
       saveNetBtn.style.cssText = 'margin-top:10px;padding:8px 16px;background:#f1f5f9;color:#0f172a;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-weight:bold;width:100%;margin-bottom:4px;';
@@ -321,11 +313,10 @@ iden_hub <- function(
       wrapper.appendChild(panel);
       el.appendChild(wrapper);
 
-      // ========== COLOR MAPS ==========
+      // Color maps
       var colorMap = {
         'Plasma': [[13,8,135],[126,3,168],[204,71,120],[248,149,64],[240,249,33]],
         'Viridis': [[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]],
-        'Heat': [[128,0,0],[255,0,0],[255,165,0],[255,255,0],[255,255,255]],
         'Blues': [[247,251,255],[198,219,239],[107,174,214],[33,113,181],[8,48,107]],
         'Reds': [[255,245,240],[254,224,210],[252,146,114],[222,45,38],[165,15,21]]
       };
@@ -341,7 +332,7 @@ iden_hub <- function(
         return 'linear-gradient(to right,'+p.join(',')+')';
       }
 
-      // ========== HUB ANALYSIS ENGINE ==========
+      // Hub Analysis Engine
       function applyAnalysis() {
         var n = parseInt(topNInput.value);
         if(isNaN(n) || n <= 0) { alert('Please enter a valid number of top hubs.'); return; }
@@ -415,6 +406,7 @@ iden_hub <- function(
         legendWrap.style.display = 'none';
         if(visEngine && visEngine.fit) visEngine.fit({animation:{duration:1000,easingFunction:'easeInOutQuad'}});
       };
+    ", get_ctrl_drag_js(), "
     }
     ")
 
@@ -430,9 +422,9 @@ iden_hub <- function(
 
     vis_plot$x$background <- "#ffffff"
     out_html <- file.path(output_directory, paste0("interactive_hub_", cleaned_input_file_name, ".html"))
-    htmlwidgets::saveWidget(vis_plot, file = out_html, selfcontained = TRUE, title = "NUIMM")
+    save_widget_safe(vis_plot, file = out_html, title = "NUIMM")
   }
 
-  message("Hub identification complete.")
+  message("Hub identification completed.")
   invisible(NULL)
 }

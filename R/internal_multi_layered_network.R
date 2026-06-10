@@ -1,6 +1,6 @@
 utils::globalVariables(c("type", "weight", "name", "edge_score", "layer"))
 
-# --- Helper to Clean Taxonomic Name ---
+# Helper to clean taxonomic name
 clean_taxonomy <- function(tax_string) {
   if (is.na(tax_string) || tax_string == "") {
     return(tax_string)
@@ -53,10 +53,13 @@ con_mln_int <- function(
   out_csv <- file.path(output_dir, paste0("final_mln_", base_name, ".csv"))
   out_html <- file.path(output_dir, paste0("interactive_mln_", base_name, ".html"))
 
-  # Read Data
-  mpn <- read_input_file(mpn_file, file_type = "csv", stringsAsFactors = FALSE)
-  ppn <- if (!is.na(ppn_file) && file.exists(ppn_file)) read_input_file(ppn_file, file_type = "csv") else NULL
-  pmn <- if (!is.null(pmn_file) && file.exists(pmn_file)) read_input_file(pmn_file, file_type = "csv", stringsAsFactors = FALSE) else NULL
+  # Safe file check
+  is_valid_file <- function(f) length(f) == 1 && !is.na(f) && file.exists(f)
+
+  # Read data
+  mpn <- if (is_valid_file(mpn_file)) read_input_file(mpn_file, file_type = "csv", stringsAsFactors = FALSE) else data.frame()
+  ppn <- if (is_valid_file(ppn_file)) read_input_file(ppn_file, file_type = "csv") else NULL
+  pmn <- if (is_valid_file(pmn_file)) read_input_file(pmn_file, file_type = "csv", stringsAsFactors = FALSE) else NULL
   gsea <- read_input_file(gsea_file, file_type = "csv")
 
   valid_paths <- gsea$ID
@@ -66,8 +69,8 @@ con_mln_int <- function(
     mpn_valid <- mpn[mpn$FunctionID %in% valid_paths, ]
     if (nrow(mpn_valid) > 0) edges <- rbind(edges, data.frame(from = mpn_valid$TaxonID, to = mpn_valid$FunctionID, value = mpn_valid$relative_contribution, type = "Microbe-Pathway"))
   }
-  if (!is.null(ppn)) {
-    ppn_valid <- ppn[ppn$FunctionID_1 %in% valid_paths & ppn$FunctionID_2 %in% valid_paths, ]
+  if (!is.null(ppn) && nrow(ppn) > 0) {
+    ppn_valid <- ppn[ppn$FunctionID_1 %in% valid_paths & ppn$FunctionID_2 %in% valid_paths, , drop = FALSE]
     if (nrow(ppn_valid) > 0) edges <- rbind(edges, data.frame(from = ppn_valid$FunctionID_1, to = ppn_valid$FunctionID_2, value = ppn_valid$jaccard_index, type = "Pathway-Pathway"))
   }
   if (!is.null(pmn)) {
@@ -75,7 +78,7 @@ con_mln_int <- function(
     if (nrow(pmn_valid) > 0) edges <- rbind(edges, data.frame(from = pmn_valid$FunctionID, to = pmn_valid$MetaboliteID, value = abs(pmn_valid$correlation), type = "Pathway-Metabolite"))
   }
 
-  # Load pathway ID to name dictionary/mapping
+  # Load pathway ID to name mapping
   pwy_names <- list()
   if (ppn_map_database == "kegg") {
     name_path <- system.file("extdata", "KEGG_pwy_name.csv", package = "NUIMM")
@@ -110,18 +113,18 @@ con_mln_int <- function(
         return(x)
       })
     }
-    
+
     idx_mp <- edges$type == "Microbe-Pathway"
     if (any(idx_mp)) {
       edges$to[idx_mp] <- translate_vec(edges$to[idx_mp])
     }
-    
+
     idx_pp <- edges$type == "Pathway-Pathway"
     if (any(idx_pp)) {
       edges$from[idx_pp] <- translate_vec(edges$from[idx_pp])
       edges$to[idx_pp] <- translate_vec(edges$to[idx_pp])
     }
-    
+
     idx_pm <- edges$type == "Pathway-Metabolite"
     if (any(idx_pm)) {
       edges$from[idx_pm] <- translate_vec(edges$from[idx_pm])
@@ -129,7 +132,7 @@ con_mln_int <- function(
   }
 
   if (nrow(edges) > 0) {
-    message(sprintf("    Final multi-layered network assembled with %d nodes and %d edges.", length(unique(c(edges$from, edges$to))), nrow(edges)))
+    message(sprintf("    Multi-layered network assembled: |V|=%d, |E|=%d.", length(unique(c(edges$from, edges$to))), nrow(edges)))
     write.csv(edges, out_csv, row.names = FALSE)
     edges$title <- paste0("<div style='padding:10px; font-family:sans-serif;'><b>Value:</b> ", round(edges$value, 4), "</div>")
 
@@ -137,21 +140,22 @@ con_mln_int <- function(
       tryCatch(
         {
           g <- igraph::graph_from_data_frame(edges, directed = FALSE)
-          igraph::V(g)$group <- ifelse(igraph::V(g)$name %in% edges$from[edges$type == "Microbe-Pathway"], "Microbe",
-            ifelse(igraph::V(g)$name %in% edges$to[edges$type == "Pathway-Metabolite"], "Metabolite", "Pathway")
-          )
+
+          node_groups <- as.character(determine_node_groups(igraph::V(g)$name, edges, "from", "to"))
 
           # Leave shape and color to be handled strictly by groups
           nodes_df <- data.frame(
             id = igraph::V(g)$name,
-            label = sapply(igraph::V(g)$name, function(x) if (igraph::V(g)$group[igraph::V(g)$name == x] == "Microbe") clean_taxonomy(x) else x),
-            group = igraph::V(g)$group,
-            size = c("Microbe" = 20, "Pathway" = 30, "Metabolite" = 40)[igraph::V(g)$group],
+            label = sapply(seq_along(igraph::V(g)$name), function(i) {
+              if (node_groups[i] == "Microbe") clean_taxonomy(igraph::V(g)$name[i]) else igraph::V(g)$name[i]
+            }),
+            group = node_groups,
+            size = c("Microbe" = 20, "Pathway" = 30, "Metabolite" = 40)[node_groups],
             title = paste0("<div style='padding:10px; font-family:sans-serif;'><b>ID:</b> ", igraph::V(g)$name, "</div>"),
             stringsAsFactors = FALSE
           )
 
-          # Node coordinate initialization
+          # Initialize node coordinates
           nodes_df$x <- 0
           nodes_df$y <- 0
 
@@ -199,8 +203,8 @@ con_mln_int <- function(
           )
           nodes_df <- rbind(nodes_df, legend_nodes)
 
-          # JavaScript configuration for interactive network customization panel
-          js_custom_panel <- "
+          # JavaScript configuration for interactive UI
+          js_custom_panel <- paste0("
           function(el, x, data) {
             var wrapper = document.createElement('div');
             wrapper.style.position = 'absolute';
@@ -243,7 +247,7 @@ con_mln_int <- function(
             };
 
             var tip = document.createElement('div');
-            tip.innerHTML = '<b>Tip:</b> Scroll to zoom. Drag nodes to perfect layout.<br><hr style=\"margin:10px 0; border:0; border-top:1px solid #e2e8f0;\">';
+            tip.innerHTML = '<b>Tip:</b> Scroll to zoom. Hold Ctrl + drag to select multiple nodes. Drag nodes to perfect layout.<br><hr style=\"margin:10px 0; border:0; border-top:1px solid #e2e8f0;\">';
             tip.style.fontSize = '14px';
             tip.style.color = '#475569';
             tip.style.marginBottom = '10px';
@@ -360,10 +364,11 @@ con_mln_int <- function(
 
             wrapper.appendChild(panel);
             el.appendChild(wrapper);
+          ", get_ctrl_drag_js(), "
           }
-          "
+          ")
 
-          # Render Network
+          # Render network
           vis_plot <- visNetwork::visNetwork(nodes_df, edges, width = "100%", height = "95vh") |>
             visNetwork::visNodes(font = list(color = "#0f172a", size = 35, face = "sans-serif", background = "rgba(255,255,255,0.85)"), borderWidth = 1.5, shadow = TRUE) |>
             visNetwork::visEdges(smooth = FALSE, color = list(color = "rgba(180, 180, 180, 0.4)", highlight = "#e11d48"), width = 1) |>
@@ -375,11 +380,11 @@ con_mln_int <- function(
             htmlwidgets::onRender(js_custom_panel, data = base_name)
 
           vis_plot$x$background <- "#ffffff"
-          htmlwidgets::saveWidget(vis_plot, file = out_html, selfcontained = TRUE, title = "NUIMM")
-          # (HTML build message removed)
+          save_widget_safe(vis_plot, file = out_html, title = "NUIMM")
+
         },
         error = function(e) {
-          message("Visualization failed: ", e$message)
+          message("Visualization rendering failed: ", e$message)
         }
       )
     }

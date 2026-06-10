@@ -14,23 +14,30 @@ con_mln(
   map_file,
   output_dir,
   format = c("universal", "humann", "picrust"),
-  ppn_da_method = c("maaslin2", "deseq2", "edger", "simple"),
+  ppn_da_method = c("maaslin2", "maaslin3", "deseq2", "edger", "aldex2", "ancombc",
+    "wilcoxon", "linda"),
   ppn_map_database = c("kegg", "metacyc", "custom"),
   ppn_rank_by = c("signed_log_pvalue", "log2foldchange", "pvalue"),
-  ppn_p_adjust_method = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY",
+  ppn_padjust_method = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY",
     "none"),
+  ppn_filter_by = c("none", "pvalue", "padjust"),
   ppn_pvalue_cutoff = 0.05,
+  ppn_padjust_cutoff = 0.05,
   ppn_jaccard_cutoff = 0.2,
-  ppn_jaccard_method = c("gsea_core", "map_file"),
+  ppn_interaction_method = c("gsea_core", "database", "metabolite", "rel_pathway"),
+  ppn_compound_map = c("kegg", "metacyc", "custom"),
+  ppn_compound_custom_map = NULL,
   comparisons_list = NULL,
   mpn_filtering = c("unfiltered", "mean", "median", "top10\%", "top25\%", "top50\%",
     "top75\%"),
+  mpn_mode = c("delta", "pooled"),
   pmn_corr_method = c("spearman", "pearson", "kendall"),
-  pmn_filter_by = c("none", "p_value", "q_value"),
+  pmn_mode = c("delta", "pooled"),
+  pmn_filter_by = c("none", "pvalue", "padjust"),
   pmn_corr_cutoff = 0.3,
   pmn_pvalue_cutoff = 0.05,
-  pmn_q_value_cutoff = 0.05,
-  pmn_p_adjust_method = "fdr",
+  pmn_padjust_cutoff = 0.05,
+  pmn_padjust_method = "fdr",
   visualize = TRUE,
   layout_method = "sugiyama",
   node_colors = c(Microbe = "#9AA374", Pathway = "#C1ABAD", Metabolite = "#4E7286"),
@@ -60,35 +67,47 @@ con_mln(
 
 \item{format}{Input data format: "universal", "humann", or "picrust".}
 
-\item{ppn_da_method}{Differential abundance method: "deseq2", "edger", "maaslin2", or "simple".}
+\item{ppn_da_method}{Differential abundance method: "deseq2", "edger", "maaslin2", "maaslin3", "aldex2", "ancombc", "wilcoxon", or "linda".}
 
 \item{ppn_map_database}{Pathway database: "kegg", "metacyc", or "custom".}
 
 \item{ppn_rank_by}{Gene ranking metric for GSEA: "signed_log_pvalue", "log2foldchange", or "pvalue".}
 
-\item{ppn_p_adjust_method}{P-value adjustment method for GSEA.}
+\item{ppn_padjust_method}{P-value adjustment method for GSEA.}
+
+\item{ppn_filter_by}{Significance filter for GSEA: "none", "pvalue", or "padjust".}
 
 \item{ppn_pvalue_cutoff}{P-value cutoff for GSEA significance.}
 
+\item{ppn_padjust_cutoff}{Adjusted p-value cutoff for GSEA significance.}
+
 \item{ppn_jaccard_cutoff}{Minimum Jaccard index to retain pathway-pathway edges.}
 
-\item{ppn_jaccard_method}{Jaccard calculation source: "gsea_core" or "map_file".}
+\item{ppn_interaction_method}{Method for defining pathway interactions: "gsea_core", "database", "metabolite", or "rel_pathway".}
+
+\item{ppn_compound_map}{Compound-pathway database for metabolite Jaccard: "kegg", "metacyc", or "custom". Only used when ppn_interaction_method = "metabolite".}
+
+\item{ppn_compound_custom_map}{Path to custom compound-pathway CSV. Required when ppn_compound_map = "custom".}
 
 \item{comparisons_list}{Optional list of pairwise group comparisons.}
 
 \item{mpn_filtering}{Microbe-pathway filtering: "unfiltered", "mean", "median", or "topN\%".}
 
+\item{mpn_mode}{Microbe-pathway mode: "delta" (default) computes paired changes per subject with Wilcoxon testing; "pooled" combines all samples from both groups.}
+
 \item{pmn_corr_method}{Correlation method for pathway-metabolite: "spearman", "pearson", or "kendall".}
 
-\item{pmn_filter_by}{Significance filter: "none", "p_value", or "q_value".}
+\item{pmn_mode}{Correlation mode: "delta" (default) computes paired deltas then correlates; "pooled" uses all samples from both groups.}
+
+\item{pmn_filter_by}{Significance filter: "none", "pvalue", or "padjust".}
 
 \item{pmn_corr_cutoff}{Minimum absolute correlation for pathway-metabolite edges.}
 
 \item{pmn_pvalue_cutoff}{P-value cutoff for pathway-metabolite edges.}
 
-\item{pmn_q_value_cutoff}{Q-value cutoff for pathway-metabolite edges.}
+\item{pmn_padjust_cutoff}{Adjusted p-value cutoff for pathway-metabolite edges.}
 
-\item{pmn_p_adjust_method}{P-value adjustment method for pathway-metabolite correlations.}
+\item{pmn_padjust_method}{P-value adjustment method for pathway-metabolite correlations.}
 
 \item{visualize}{Logical. If TRUE, generates interactive HTML visualization.}
 
