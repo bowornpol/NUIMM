@@ -7,6 +7,7 @@
 node_prior(
   multi_layered_network_file,
   output_directory,
+  seed_nodes = NULL,
   time_step_interval = 0.01,
   stabilization_threshold = 1e-04,
   stabilization_window_size = 10,
@@ -27,7 +28,7 @@ node_prior(
 \item{visualize}{Logical. If TRUE, generates interactive HTML.}
 }
 \value{
-Invisible NULL.
+Invisible NULL. Results are written to `output_directory`.
 }
 \description{
 Node Prioritization using Laplacian Heat Diffusion (LHD) algorithm

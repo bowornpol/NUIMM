@@ -10,9 +10,9 @@ utils::globalVariables(c("MCC_score", "mcc_score", "name"))
 #'
 #' @param multi_layered_network_file Path to the multi-layered network CSV/TSV
 #'   (output from `con_mln`). Must contain 'from'/'to' or 'Feature1'/'Feature2' columns.
-#' @param output_directory Path to save results (CSV + HTML).
+#' @param output_directory Path to save results.
 #' @param top_n_hubs Integer. Number of top hub nodes to highlight in the HTML visualization.
-#' @param visualize Logical. If TRUE, generates an interactive HTML network. Defaults to TRUE.
+#' @param visualize Logical. If TRUE, generates interactive HTML.
 #' @return Invisible NULL. Results are written to `output_directory`.
 #' @export
 iden_hub <- function(
@@ -59,7 +59,8 @@ iden_hub <- function(
 
   for (clique_nodes_indices in cliques) {
     clique_size <- length(clique_nodes_indices)
-    clique_score <- factorial(clique_size - 1)
+    # Safe factorial: avoid Inf for cliques of size > 170
+    clique_score <- if (clique_size - 1 <= 170) factorial(clique_size - 1) else exp(lfactorial(clique_size - 1))
     for (node_index in clique_nodes_indices) {
       node_name <- igraph::V(g)$name[node_index]
       mcc_scores[node_name] <- mcc_scores[node_name] + clique_score
@@ -128,53 +129,8 @@ iden_hub <- function(
       edges_df$title <- "<div style='padding:10px; font-family:sans-serif;'><b>Value:</b> 1</div>"
     }
 
-    # Initialize node coordinates for circular layout
-    nodes_df$x <- 0
-    nodes_df$y <- 0
-
-    idx_mic <- which(nodes_df$group == "Microbe")
-    idx_path <- which(nodes_df$group == "Pathway")
-    idx_met <- which(nodes_df$group == "Metabolite")
-
-    r_mic <- 200 + (length(idx_mic) * 15)
-    r_path <- 150 + (length(idx_path) * 20)
-    r_met <- 100 + (length(idx_met) * 25)
-
-    x_mic <- -(r_mic + r_path + 500)
-    x_path <- 0
-    x_met <- (r_path + r_met + 500)
-
-    if (length(idx_mic) > 0) {
-      ang <- seq(0, 2 * pi, length.out = length(idx_mic) + 1)[1:length(idx_mic)]
-      nodes_df$x[idx_mic] <- x_mic + r_mic * cos(ang)
-      nodes_df$y[idx_mic] <- r_mic * sin(ang)
-    }
-    if (length(idx_path) > 0) {
-      ang <- seq(0, 2 * pi, length.out = length(idx_path) + 1)[1:length(idx_path)]
-      nodes_df$x[idx_path] <- x_path + r_path * cos(ang)
-      nodes_df$y[idx_path] <- r_path * sin(ang)
-    }
-    if (length(idx_met) > 0) {
-      ang <- seq(0, 2 * pi, length.out = length(idx_met) + 1)[1:length(idx_met)]
-      nodes_df$x[idx_met] <- x_met + r_met * cos(ang)
-      nodes_df$y[idx_met] <- r_met * sin(ang)
-    }
-
-    max_y <- max(nodes_df$y, na.rm = TRUE)
-    legend_y <- max_y + 400
-
-    legend_nodes <- data.frame(
-      id = c("LEG_MIC", "LEG_PATH", "LEG_MET"),
-      label = c("Microbe", "Pathway", "Metabolite"),
-      mcc_score = c(0, 0, 0),
-      title = c("", "", ""),
-      group = c("Microbe", "Pathway", "Metabolite"),
-      size = c(60, 60, 60),
-      x = c(-300, 0, 300),
-      y = c(legend_y, legend_y, legend_y),
-      stringsAsFactors = FALSE
-    )
-    nodes_df <- rbind(nodes_df, legend_nodes)
+    nodes_df <- compute_circular_layout(nodes_df)
+    nodes_df <- add_legend_nodes(nodes_df)
 
     js_custom_panel <- paste0("
     function(el, x, data) {
@@ -281,10 +237,32 @@ iden_hub <- function(
         ss.addEventListener('change', function(){ var opts={groups:{}}; opts.groups[g.name]={shape:ss.value}; if(visEngine&&visEngine.setOptions) visEngine.setOptions(opts); });
       });
 
+      // Save MCC Scores button
+      var saveMccBtn = document.createElement('button');
+      saveMccBtn.innerHTML = 'Save MCC Scores (CSV)';
+      saveMccBtn.style.cssText = 'margin-top:10px;padding:8px 16px;background:#f8fafc;color:#0f172a;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-weight:bold;width:100%;margin-bottom:4px;';
+      saveMccBtn.onclick = function() {
+        var csvContent = 'data:text/csv;charset=utf-8,Node,MCC_Score,Group\\n';
+        var realNodes = allNodes.filter(function(n) { return !n.id.toString().startsWith('LEG_'); });
+        realNodes.sort(function(a,b) { return b.mcc_score - a.mcc_score; }).forEach(function(n) {
+          var nodeLabel = n.id.toString();
+          if (nodeLabel.indexOf(',') !== -1) nodeLabel = '\"' + nodeLabel + '\"';
+          csvContent += nodeLabel + ',' + n.mcc_score + ',' + n.group + '\\n';
+        });
+        var encodedUri = encodeURI(csvContent);
+        var link = document.createElement('a');
+        link.setAttribute('href', encodedUri);
+        link.setAttribute('download', 'hub_mcc_scores.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      };
+      panel.appendChild(saveMccBtn);
+
       // Save Network button
       var saveNetBtn = document.createElement('button');
       saveNetBtn.innerHTML = 'Save Network';
-      saveNetBtn.style.cssText = 'margin-top:10px;padding:8px 16px;background:#f1f5f9;color:#0f172a;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-weight:bold;width:100%;margin-bottom:4px;';
+      saveNetBtn.style.cssText = 'margin-top:4px;padding:8px 16px;background:#f1f5f9;color:#0f172a;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-weight:bold;width:100%;margin-bottom:4px;';
       saveNetBtn.onclick = function() {
         var c = el.getElementsByTagName('canvas')[0]; if(!c) return;
         var tc = document.createElement('canvas'); tc.width=c.width; tc.height=c.height;
@@ -426,5 +404,5 @@ iden_hub <- function(
   }
 
   message("Hub identification completed.")
-  invisible(NULL)
+  invisible(full_results_df)
 }

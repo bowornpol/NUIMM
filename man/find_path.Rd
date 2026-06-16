@@ -21,7 +21,7 @@ find_path(
 
 \item{output_directory}{Path to save results.}
 
-\item{visualize}{Logical. If TRUE, generates interactive HTML. Defaults to TRUE.}
+\item{visualize}{Logical. If TRUE, generates interactive HTML.}
 }
 \value{
 Invisible NULL. Results are written to `output_directory`.

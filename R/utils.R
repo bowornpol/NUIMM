@@ -207,3 +207,76 @@ save_widget_safe <- function(widget, file, title = "NUIMM") {
   }
 }
 
+#' Compute three-cluster circular layout for nodes by group
+#' @keywords internal
+#' @noRd
+compute_circular_layout <- function(nodes_df) {
+  nodes_df$x <- 0
+  nodes_df$y <- 0
+
+  idx_mic <- which(nodes_df$group == "Microbe")
+  idx_path <- which(nodes_df$group == "Pathway")
+  idx_met <- which(nodes_df$group == "Metabolite")
+
+  r_mic <- 200 + (length(idx_mic) * 15)
+  r_path <- 150 + (length(idx_path) * 20)
+  r_met <- 100 + (length(idx_met) * 25)
+
+  x_mic <- -(r_mic + r_path + 500)
+  x_path <- 0
+  x_met <- (r_path + r_met + 500)
+
+  place_circle <- function(idx, cx, r) {
+    if (length(idx) > 0) {
+      ang <- seq(0, 2 * pi, length.out = length(idx) + 1)[seq_along(idx)]
+      nodes_df$x[idx] <<- cx + r * cos(ang)
+      nodes_df$y[idx] <<- r * sin(ang)
+    }
+  }
+
+  place_circle(idx_mic, x_mic, r_mic)
+  place_circle(idx_path, x_path, r_path)
+  place_circle(idx_met, x_met, r_met)
+
+  return(nodes_df)
+}
+
+#' Add legend nodes to a nodes data.frame, auto-adapting to its columns
+#' @keywords internal
+#' @noRd
+add_legend_nodes <- function(nodes_df) {
+  max_y <- max(nodes_df$y, na.rm = TRUE)
+  legend_y <- max_y + 400
+  legend_list <- list()
+  for (col in colnames(nodes_df)) {
+    legend_list[[col]] <- switch(col,
+      id    = c("LEG_MIC", "LEG_PATH", "LEG_MET"),
+      label = c("Microbe", "Pathway", "Metabolite"),
+      group = c("Microbe", "Pathway", "Metabolite"),
+      size  = c(60, 60, 60),
+      x     = c(-300, 0, 300),
+      y     = rep(legend_y, 3),
+      title = c("", "", ""),
+      { if (is.numeric(nodes_df[[col]])) rep(0, 3) else rep("", 3) }
+    )
+  }
+  legend_df <- as.data.frame(legend_list, stringsAsFactors = FALSE)
+  rbind(nodes_df, legend_df)
+}
+
+#' Validate comparisons_list structure (type and shape only, not group existence)
+#' @keywords internal
+#' @noRd
+validate_comparisons_structure <- function(comparisons_list) {
+  if (is.null(comparisons_list)) return(invisible(NULL))
+  if (!is.list(comparisons_list)) {
+    stop("'comparisons_list' must be a list of character vectors, e.g., list(c('V1', 'V3')). Got: ", class(comparisons_list)[1])
+  }
+  for (i in seq_along(comparisons_list)) {
+    comp <- comparisons_list[[i]]
+    if (!is.character(comp) || length(comp) != 2) {
+      stop(sprintf("comparisons_list[[%d]] must be a character vector of length 2.", i))
+    }
+  }
+  invisible(NULL)
+}
