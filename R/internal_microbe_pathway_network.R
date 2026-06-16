@@ -8,16 +8,23 @@ utils::globalVariables(c("relative_contribution", "FunctionID", "taxon_function_
 #' @param taxonomy_file Path to taxonomy mapping file (optional).
 #' @param output_dir Path to output directory.
 #' @param mpn_filtering Filtering method: "unfiltered", "mean", "median", or "topN%".
-#' @param mpn_mode Mode: "delta" (default) computes paired changes (Treatment - Baseline) in per-sample relative contribution and tests significance via Wilcoxon; "pooled" combines all samples from both groups and computes relative contribution without statistical testing.
+#' @param mpn_mode Mode: "delta" computes paired changes; "pooled" combines all samples; "differential" computes unpaired cross-sectional differences via Wilcoxon.
+#' @param mpn_filter_by Significance filter for delta/differential modes: "pvalue" or "padjust".
+#' @param mpn_pvalue_cutoff P-value cutoff for significance filtering (default 0.05).
+#' @param mpn_padjust_cutoff Adjusted p-value cutoff for significance filtering (default 0.05).
 #' @param comparisons_list Optional list of pairwise group comparisons. Required for "delta" mode.
 
 con_mpn_int <- function(
   path_con_file, metadata_file, taxonomy_file = NULL, output_dir,
   mpn_filtering = "top10%",
-  mpn_mode = c("delta", "pooled"),
+  mpn_mode = c("delta", "pooled", "differential"),
+  mpn_filter_by = c("pvalue", "padjust"),
+  mpn_pvalue_cutoff = 0.05,
+  mpn_padjust_cutoff = 0.05,
   comparisons_list = NULL
 ) {
   mpn_mode <- match.arg(mpn_mode)
+  mpn_filter_by <- match.arg(mpn_filter_by)
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
   # Read Data
@@ -38,8 +45,25 @@ con_mpn_int <- function(
   if (mpn_mode == "pooled") {
     message("  Analyzing Microbe-Pathway layer (Pooled mode).")
 
+    if (is.null(comparisons_list)) {
+      conditions <- sort(unique(merged$class))
+      if (length(conditions) >= 2) {
+        baseline_grp <- conditions[1]
+        treatment_grp <- conditions[2]
+      } else {
+        baseline_grp <- conditions[1]
+        treatment_grp <- conditions[1]
+      }
+    } else {
+      baseline_grp <- comparisons_list[[1]][1]
+      treatment_grp <- comparisons_list[[1]][2]
+    }
+
+    # Filter to only the samples relevant to this comparison
+    pool_data <- merged[merged$class %in% c(baseline_grp, treatment_grp), ]
+
     # Compute relative contribution across all samples
-    res <- merged |>
+    res <- pool_data |>
       dplyr::group_by(FunctionID, TaxonID) |>
       dplyr::summarise(taxon_function_abun = sum(taxon_function_abun), .groups = "drop") |>
       dplyr::group_by(FunctionID) |>
@@ -61,12 +85,6 @@ con_mpn_int <- function(
   # --- Delta Mode: Paired change in contribution per subject ---
   } else if (mpn_mode == "delta") {
     message("  Analyzing Microbe-Pathway layer (Delta mode).")
-
-    # Force 'unfiltered' mode because Wilcoxon test handles significance
-    if (mpn_filtering != "unfiltered") {
-      message(sprintf("    Note: mpn_filtering='%s' superseded by Wilcoxon test.", mpn_filtering))
-      mpn_filtering <- "unfiltered"
-    }
 
     # --- Dynamic Group Extraction ---
     if (is.null(comparisons_list)) {
@@ -104,8 +122,8 @@ con_mpn_int <- function(
     base_samps <- unique(per_sample$SampleID[per_sample$class == baseline_grp])
     treat_samps <- unique(per_sample$SampleID[per_sample$class == treatment_grp])
 
-    base_subj <- sub(paste0("_", baseline_grp, "$"), "", base_samps)
-    treat_subj <- sub(paste0("_", treatment_grp, "$"), "", treat_samps)
+    base_subj <- sub(paste0("_", baseline_grp), "", base_samps, fixed = TRUE)
+    treat_subj <- sub(paste0("_", treatment_grp), "", treat_samps, fixed = TRUE)
 
     paired_subjs <- intersect(base_subj, treat_subj)
     if (length(paired_subjs) < 3) stop("Not enough paired subjects for delta MPN (need at least 3).")
@@ -160,7 +178,6 @@ con_mpn_int <- function(
     res <- all_combs |>
       dplyr::group_by(FunctionID, TaxonID) |>
       dplyr::summarise(
-        mean_delta = mean(delta),
         median_delta = stats::median(delta),
         p_value = fast_wilcox(delta),
         n_subjects = length(paired_subjs),
@@ -174,28 +191,128 @@ con_mpn_int <- function(
     if (nrow(res) > 0) {
       res$p_adjust <- stats::p.adjust(res$p_value, method = "fdr")
 
-      # Filter significant changes using unadjusted p-value < 0.05
-      res_sig <- res[res$p_value < 0.05, ]
-
-      # Also compute relative contribution magnitude for filtering
-      res_sig$taxon_function_abun <- abs(res_sig$mean_delta)
-      res_sig$total_abun <- ave(res_sig$taxon_function_abun, res_sig$FunctionID, FUN = sum)
-      res_sig$relative_contribution <- ifelse(res_sig$total_abun == 0, 0, res_sig$taxon_function_abun / res_sig$total_abun)
-
-      # Apply the same topN% / mean / median filter on magnitude
-      res_sig <- .mpn_apply_filter(res_sig, mpn_filtering)
+      # Filter significant changes using the user-selected criterion
+      if (mpn_filter_by == "padjust") {
+        res_sig <- res[res$p_adjust < mpn_padjust_cutoff, ]
+        filter_label <- "q"
+        cutoff_val <- mpn_padjust_cutoff
+      } else {
+        res_sig <- res[res$p_value < mpn_pvalue_cutoff, ]
+        filter_label <- "p"
+        cutoff_val <- mpn_pvalue_cutoff
+      }
 
       if (nrow(res_sig) > 0) {
-        message(sprintf("    Retained %d significant delta associations (p < 0.05, %d taxa).", nrow(res_sig), length(unique(res_sig$TaxonID))))
+        # Compute relative contribution magnitude using the median (matching Wilcoxon)
+        res_sig$taxon_function_abun <- abs(res_sig$median_delta)
+        res_sig$total_abun <- ave(res_sig$taxon_function_abun, res_sig$FunctionID, FUN = sum)
+        res_sig$relative_contribution <- ifelse(res_sig$total_abun == 0, 0, res_sig$taxon_function_abun / res_sig$total_abun)
+
+        # Apply the same topN% / mean / median filter on magnitude
+        res_sig <- .mpn_apply_filter(res_sig, mpn_filtering)
+      }
+
+      if (nrow(res_sig) > 0) {
+        message(sprintf("    Retained %d significant delta associations (%s < %g, %d taxa).", nrow(res_sig), filter_label, cutoff_val, length(unique(res_sig$TaxonID))))
         fname <- file.path(output_dir, "mpn_delta.csv")
         write.csv(res_sig, fname, row.names = FALSE)
         output_paths <- c(output_paths, fname)
       } else {
-        message("    No significant delta associations detected (p < 0.05).")
+        message(sprintf("    No significant delta associations detected (%s < %g).", filter_label, cutoff_val))
       }
     } else {
       message("    No non-zero deltas computed.")
     }
+    
+  # --- Differential Mode: Unpaired change for cross-sectional data ---
+  } else if (mpn_mode == "differential") {
+    message("  Analyzing Microbe-Pathway layer (Differential mode).")
+    
+    if (is.null(comparisons_list)) {
+      conditions <- sort(unique(merged$class))
+      if (length(conditions) >= 2) {
+        baseline_grp <- conditions[1]
+        treatment_grp <- conditions[2]
+      } else stop("Differential mode requires at least two groups.")
+    } else {
+      baseline_grp <- comparisons_list[[1]][1]
+      treatment_grp <- comparisons_list[[1]][2]
+    }
+    
+    per_sample <- merged |>
+      dplyr::group_by(SampleID, FunctionID, TaxonID, class) |>
+      dplyr::summarise(taxon_function_abun = sum(taxon_function_abun), .groups = "drop") |>
+      dplyr::group_by(SampleID, FunctionID) |>
+      dplyr::mutate(
+        sample_pathway_total = sum(taxon_function_abun),
+        taxon_function_abun = ifelse(sample_pathway_total == 0, 0, taxon_function_abun / sample_pathway_total)
+      ) |>
+      dplyr::select(-sample_pathway_total) |>
+      dplyr::ungroup() |>
+      as.data.frame()
+      
+    unique_pairs <- unique(per_sample[, c("FunctionID", "TaxonID")])
+    all_samps <- unique(merged[merged$class %in% c(baseline_grp, treatment_grp), c("SampleID", "class")])
+    
+    all_combs <- expand.grid(
+      PairIdx = seq_len(nrow(unique_pairs)),
+      SampleID = all_samps$SampleID,
+      stringsAsFactors = FALSE
+    )
+    all_combs$FunctionID <- unique_pairs$FunctionID[all_combs$PairIdx]
+    all_combs$TaxonID <- unique_pairs$TaxonID[all_combs$PairIdx]
+    all_combs <- merge(all_combs, all_samps, by="SampleID")
+    all_combs$PairIdx <- NULL
+    
+    dt <- merge(all_combs, per_sample, by=c("SampleID", "FunctionID", "TaxonID", "class"), all.x=TRUE)
+    dt$taxon_function_abun[is.na(dt$taxon_function_abun)] <- 0
+    
+    fast_unpaired_wilcox <- function(val, cls) {
+      if (length(unique(cls)) < 2) return(NA_real_)
+      tryCatch(wilcox.test(val ~ cls, exact = FALSE)$p.value, error = function(e) NA_real_)
+    }
+    
+    message("    Executing Unpaired Wilcoxon rank-sum tests.")
+    res <- dt |>
+      dplyr::group_by(FunctionID, TaxonID) |>
+      dplyr::summarise(
+        median_base = stats::median(taxon_function_abun[class == baseline_grp], na.rm=TRUE),
+        median_treat = stats::median(taxon_function_abun[class == treatment_grp], na.rm=TRUE),
+        p_value = fast_unpaired_wilcox(taxon_function_abun, class),
+        .groups = "drop"
+      ) |>
+      dplyr::mutate(median_diff = median_treat - median_base) |>
+      as.data.frame()
+      
+    res <- res[!is.na(res$p_value), ]
+    if (nrow(res) > 0) {
+      res$p_adjust <- stats::p.adjust(res$p_value, method = "fdr")
+
+      # Filter significant changes using the user-selected criterion
+      if (mpn_filter_by == "padjust") {
+        res_sig <- res[res$p_adjust < mpn_padjust_cutoff, ]
+        filter_label <- "q"
+        cutoff_val <- mpn_padjust_cutoff
+      } else {
+        res_sig <- res[res$p_value < mpn_pvalue_cutoff, ]
+        filter_label <- "p"
+        cutoff_val <- mpn_pvalue_cutoff
+      }
+
+      if (nrow(res_sig) > 0) {
+        res_sig$taxon_function_abun <- abs(res_sig$median_diff)
+        res_sig$total_abun <- ave(res_sig$taxon_function_abun, res_sig$FunctionID, FUN = sum)
+        res_sig$relative_contribution <- ifelse(res_sig$total_abun == 0, 0, res_sig$taxon_function_abun / res_sig$total_abun)
+        res_sig <- .mpn_apply_filter(res_sig, mpn_filtering)
+      }
+      
+      if (nrow(res_sig) > 0) {
+        message(sprintf("    Retained %d significant differential associations (%s < %g, %d taxa).", nrow(res_sig), filter_label, cutoff_val, length(unique(res_sig$TaxonID))))
+        fname <- file.path(output_dir, "mpn_differential.csv")
+        write.csv(res_sig, fname, row.names = FALSE)
+        output_paths <- c(output_paths, fname)
+      } else message(sprintf("    No significant differential associations detected (%s < %g).", filter_label, cutoff_val))
+    } else message("    No differential statistics computed.")
   }
 
   return(output_paths)

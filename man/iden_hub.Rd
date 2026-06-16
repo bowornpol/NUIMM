@@ -15,11 +15,11 @@ iden_hub(
 \item{multi_layered_network_file}{Path to the multi-layered network CSV/TSV
 (output from `con_mln`). Must contain 'from'/'to' or 'Feature1'/'Feature2' columns.}
 
-\item{output_directory}{Path to save results (CSV + HTML).}
+\item{output_directory}{Path to save results.}
 
 \item{top_n_hubs}{Integer. Number of top hub nodes to highlight in the HTML visualization.}
 
-\item{visualize}{Logical. If TRUE, generates an interactive HTML network. Defaults to TRUE.}
+\item{visualize}{Logical. If TRUE, generates interactive HTML.}
 }
 \value{
 Invisible NULL. Results are written to `output_directory`.

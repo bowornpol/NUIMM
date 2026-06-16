@@ -16,11 +16,12 @@ utils::globalVariables(c(
 #' @param stabilization_threshold Numeric. Threshold for stabilization detection.
 #' @param stabilization_window_size Integer. Window size for stabilization check.
 #' @param visualize Logical. If TRUE, generates interactive HTML.
-#' @return Invisible NULL.
+#' @return Invisible NULL. Results are written to `output_directory`.
 #' @export
 node_prior <- function(
   multi_layered_network_file,
   output_directory,
+  seed_nodes = NULL,
   time_step_interval = 0.01,
   stabilization_threshold = 0.0001,
   stabilization_window_size = 10,
@@ -77,47 +78,60 @@ node_prior <- function(
   nodes_df$group <- as.character(determine_node_groups(nodes_df$id, network_data, source_col, target_col))
   nodes_df$size <- c("Microbe" = 20, "Pathway" = 30, "Metabolite" = 40)[nodes_df$group]
 
-  nodes_df$x <- 0
-  nodes_df$y <- 0
-  idx_mic <- which(nodes_df$group == "Microbe")
-  idx_path <- which(nodes_df$group == "Pathway")
-  idx_met <- which(nodes_df$group == "Metabolite")
+  nodes_df <- compute_circular_layout(nodes_df)
+  nodes_df <- add_legend_nodes(nodes_df)
 
-  r_mic <- 200 + (length(idx_mic) * 15)
-  r_path <- 150 + (length(idx_path) * 20)
-  r_met <- 100 + (length(idx_met) * 25)
-  x_mic <- -(r_mic + r_path + 500)
-  x_path <- 0
-  x_met <- (r_path + r_met + 500)
+  # Server-side LHD if seed_nodes are provided
+  output_csv_path <- NULL
+  if (!is.null(seed_nodes)) {
+    message("[2/2] Running server-side Laplacian Heat Diffusion.")
+    real_nodes <- nodes_df[!grepl("^LEG_", nodes_df$id), ]
+    node_ids <- real_nodes$id
+    node_idx <- setNames(seq_along(node_ids), node_ids)
+    n <- length(node_ids)
 
-  if (length(idx_mic) > 0) {
-    ang <- seq(0, 2 * pi, length.out = length(idx_mic) + 1)[1:length(idx_mic)]
-    nodes_df$x[idx_mic] <- x_mic + r_mic * cos(ang)
-    nodes_df$y[idx_mic] <- r_mic * sin(ang)
-  }
-  if (length(idx_path) > 0) {
-    ang <- seq(0, 2 * pi, length.out = length(idx_path) + 1)[1:length(idx_path)]
-    nodes_df$x[idx_path] <- x_path + r_path * cos(ang)
-    nodes_df$y[idx_path] <- r_path * sin(ang)
-  }
-  if (length(idx_met) > 0) {
-    ang <- seq(0, 2 * pi, length.out = length(idx_met) + 1)[1:length(idx_met)]
-    nodes_df$x[idx_met] <- x_met + r_met * cos(ang)
-    nodes_df$y[idx_met] <- r_met * sin(ang)
-  }
+    # Build adjacency matrix
+    adj <- matrix(0, n, n)
+    for (r in seq_len(nrow(edges_df))) {
+      fi <- node_idx[edges_df$from[r]]
+      ti <- node_idx[edges_df$to[r]]
+      if (!is.na(fi) && !is.na(ti)) {
+        w <- edges_df$edge_weight[r]
+        adj[fi, ti] <- w; adj[ti, fi] <- w
+      }
+    }
 
-  max_y <- max(nodes_df$y, na.rm = TRUE)
-  legend_y <- max_y + 400
-  legend_nodes <- data.frame(
-    id = c("LEG_MIC", "LEG_PATH", "LEG_MET"),
-    label = c("Microbe", "Pathway", "Metabolite"),
-    title = c("", "", ""),
-    group = c("Microbe", "Pathway", "Metabolite"),
-    size = c(60, 60, 60),
-    x = c(-300, 0, 300), y = c(legend_y, legend_y, legend_y),
-    stringsAsFactors = FALSE
-  )
-  nodes_df <- rbind(nodes_df, legend_nodes)
+    deg <- rowSums(adj)
+    H <- rep(0, n)
+    valid_seeds <- seed_nodes[seed_nodes %in% node_ids]
+    if (length(valid_seeds) == 0) stop("None of the seed_nodes found in the network.")
+    for (s in valid_seeds) H[node_idx[s]] <- 1 / length(valid_seeds)
+
+    max_steps <- ceiling(1 / time_step_interval)
+    for (step in seq_len(max_steps)) {
+      nH <- numeric(n)
+      for (i in seq_len(n)) {
+        lh <- deg[i] * H[i] - sum(adj[i, ] * H)
+        nH[i] <- H[i] - time_step_interval * lh
+      }
+      # Check stabilization
+      if (step >= stabilization_window_size) {
+        rk_new <- rank(nH); rk_old <- rank(H)
+        corr <- cor(rk_new, rk_old, method = "spearman")
+        if (!is.na(corr) && abs(1 - corr) < stabilization_threshold) {
+          message(sprintf("    Stabilized at t = %.4f (step %d).", step * time_step_interval, step))
+          break
+        }
+      }
+      H <- nH
+    }
+
+    heat_df <- data.frame(Node = node_ids, Heat_score = H, Group = real_nodes$group, stringsAsFactors = FALSE)
+    heat_df <- heat_df[order(-heat_df$Heat_score), ]
+    output_csv_path <- file.path(output_directory, paste0("node_prior_heat_", cleaned_input_file_name, ".csv"))
+    write.csv(heat_df, output_csv_path, row.names = FALSE)
+    message("  Heat scores saved: ", basename(output_csv_path))
+  }
 
   if (visualize) {
     if (!requireNamespace("visNetwork", quietly = TRUE) || !requireNamespace("htmlwidgets", quietly = TRUE)) {
@@ -520,14 +534,14 @@ node_prior <- function(
             var s=topMap[nd.id], c=getColor(s.heat,minH,maxH,pal);
             var isHighlighted = (s.group === 'Microbe' && topMicrobeIds[nd.id]);
             updates.push({
-              id: nd.id, 
-              hidden: false, 
-              x: s.nx, 
-              y: s.ny, 
+              id: nd.id,
+              hidden: false,
+              x: s.nx,
+              y: s.ny,
               borderWidth: isHighlighted ? 4 : 1.5,
               color: {
-                background: c, 
-                border: isHighlighted ? '#22c55e' : '#475569', 
+                background: c,
+                border: isHighlighted ? '#22c55e' : '#475569',
                 highlight: {
                   background: c,
                   border: isHighlighted ? '#22c55e' : '#475569'
@@ -563,10 +577,10 @@ node_prior <- function(
           lastHeatResult = runLHD(selected, filterSel.value==='YES');
           drawCorrPlot(lastHeatResult.corrs, lastHeatResult.times, lastHeatResult.stabT, lastHeatResult.seedLabels);
           stabInfo.innerHTML = 'Stabilization at t = '+lastHeatResult.stabT.toFixed(4)+' | Seeds: '+lastHeatResult.seedLabels.join(', ');
-          
+
           var val = parseInt(microbeInput.value);
           applyVisualization(lastHeatResult, parseInt(pctSlider.value), palSel.value, isNaN(val) ? null : val);
-          
+
           postWrap.style.display = 'block';
           saveCsvBtn.style.display = 'block';
           savePlotBtn.style.display = 'block';
@@ -581,14 +595,14 @@ node_prior <- function(
           applyVisualization(lastHeatResult, parseInt(pctSlider.value), palSel.value, isNaN(val) ? null : val);
         }
       };
-      
+
       microbeInput.oninput = function() {
         if(lastHeatResult) {
           var val = parseInt(microbeInput.value);
           applyVisualization(lastHeatResult, parseInt(pctSlider.value), palSel.value, isNaN(val) ? null : val);
         }
       };
-      
+
       palSel.onchange = function() {
         if(lastHeatResult) {
           var val = parseInt(microbeInput.value);
@@ -656,5 +670,5 @@ node_prior <- function(
   }
 
   message("Node prioritization completed.")
-  invisible(NULL)
+  invisible(output_csv_path)
 }

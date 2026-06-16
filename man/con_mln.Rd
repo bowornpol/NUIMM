@@ -30,9 +30,12 @@ con_mln(
   comparisons_list = NULL,
   mpn_filtering = c("unfiltered", "mean", "median", "top10\%", "top25\%", "top50\%",
     "top75\%"),
-  mpn_mode = c("delta", "pooled"),
+  mpn_mode = c("delta", "pooled", "differential"),
+  mpn_filter_by = c("pvalue", "padjust"),
+  mpn_pvalue_cutoff = 0.05,
+  mpn_padjust_cutoff = 0.05,
   pmn_corr_method = c("spearman", "pearson", "kendall"),
-  pmn_mode = c("delta", "pooled"),
+  pmn_mode = c("delta", "pooled", "differential"),
   pmn_filter_by = c("none", "pvalue", "padjust"),
   pmn_corr_cutoff = 0.3,
   pmn_pvalue_cutoff = 0.05,
@@ -93,11 +96,17 @@ con_mln(
 
 \item{mpn_filtering}{Microbe-pathway filtering: "unfiltered", "mean", "median", or "topN\%".}
 
-\item{mpn_mode}{Microbe-pathway mode: "delta" (default) computes paired changes per subject with Wilcoxon testing; "pooled" combines all samples from both groups.}
+\item{mpn_mode}{Microbe-pathway mode: "delta" computes paired changes per subject; "pooled" combines all samples; "differential" computes unpaired cross-sectional differences via Wilcoxon.}
+
+\item{mpn_filter_by}{Significance filter for MPN delta/differential modes: "pvalue" (default) or "padjust".}
+
+\item{mpn_pvalue_cutoff}{P-value cutoff for MPN significance filtering (default 0.05).}
+
+\item{mpn_padjust_cutoff}{Adjusted p-value cutoff for MPN significance filtering (default 0.05).}
 
 \item{pmn_corr_method}{Correlation method for pathway-metabolite: "spearman", "pearson", or "kendall".}
 
-\item{pmn_mode}{Correlation mode: "delta" (default) computes paired deltas then correlates; "pooled" uses all samples from both groups.}
+\item{pmn_mode}{Correlation mode: "delta" computes paired deltas; "pooled" uses all samples; "differential" tests for correlation differences between groups (Fisher Z for Pearson, permutation test for Spearman/Kendall).}
 
 \item{pmn_filter_by}{Significance filter: "none", "pvalue", or "padjust".}
 

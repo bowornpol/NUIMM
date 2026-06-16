@@ -68,15 +68,19 @@ con_mln_int <- function(
 
   if (nrow(mpn) > 0) {
     mpn_valid <- mpn[mpn$FunctionID %in% valid_paths, ]
-    if (nrow(mpn_valid) > 0) edges <- rbind(edges, data.frame(from = mpn_valid$TaxonID, to = mpn_valid$FunctionID, value = mpn_valid$relative_contribution, type = "Microbe-Pathway"))
+    if (nrow(mpn_valid) > 0) edges <- rbind(edges, data.frame(from = mpn_valid$TaxonID, to = mpn_valid$FunctionID, value = mpn_valid$relative_contribution, type = "Microbe-Pathway", direction = NA_character_))
   }
   if (!is.null(ppn) && nrow(ppn) > 0) {
     ppn_valid <- ppn[ppn$FunctionID_1 %in% valid_paths & ppn$FunctionID_2 %in% valid_paths, , drop = FALSE]
-    if (nrow(ppn_valid) > 0) edges <- rbind(edges, data.frame(from = ppn_valid$FunctionID_1, to = ppn_valid$FunctionID_2, value = ppn_valid$jaccard_index, type = "Pathway-Pathway"))
+    if (nrow(ppn_valid) > 0) edges <- rbind(edges, data.frame(from = ppn_valid$FunctionID_1, to = ppn_valid$FunctionID_2, value = ppn_valid$jaccard_index, type = "Pathway-Pathway", direction = NA_character_))
   }
   if (!is.null(pmn)) {
     pmn_valid <- pmn[pmn$FunctionID %in% valid_paths, ]
-    if (nrow(pmn_valid) > 0) edges <- rbind(edges, data.frame(from = pmn_valid$FunctionID, to = pmn_valid$MetaboliteID, value = abs(pmn_valid$correlation), type = "Pathway-Metabolite"))
+    if (nrow(pmn_valid) > 0) {
+      # Use direction column if available, otherwise infer from sign
+      pmn_dir <- if ("direction" %in% colnames(pmn_valid)) pmn_valid$direction else ifelse(pmn_valid$correlation > 0, "positive", "negative")
+      edges <- rbind(edges, data.frame(from = pmn_valid$FunctionID, to = pmn_valid$MetaboliteID, value = abs(pmn_valid$correlation), type = "Pathway-Metabolite", direction = pmn_dir))
+    }
   }
 
   # Load pathway ID to name mapping
@@ -135,7 +139,14 @@ con_mln_int <- function(
   if (nrow(edges) > 0) {
     message(sprintf("    Multi-layered network assembled: |V|=%d, |E|=%d.", length(unique(c(edges$from, edges$to))), nrow(edges)))
     write.csv(edges, out_csv, row.names = FALSE)
+
+    # Apply layer-specific and direction-aware edge colors
+    edge_colors <- ifelse(edges$type == "Microbe-Pathway", "rgba(154, 163, 116, 0.5)",
+                   ifelse(edges$type == "Pathway-Pathway", "rgba(180, 180, 180, 0.4)",
+                   ifelse(!is.na(edges$direction) & edges$direction == "positive",
+                          "rgba(220, 80, 80, 0.55)", "rgba(70, 130, 180, 0.55)")))
     edges$title <- paste0("<div style='padding:10px; font-family:sans-serif;'><b>Value:</b> ", round(edges$value, 4), "</div>")
+    edges$color <- edge_colors
 
     if (visualize) {
       tryCatch(
@@ -156,53 +167,8 @@ con_mln_int <- function(
             stringsAsFactors = FALSE
           )
 
-          # Initialize node coordinates
-          nodes_df$x <- 0
-          nodes_df$y <- 0
-
-          idx_mic <- which(nodes_df$group == "Microbe")
-          idx_path <- which(nodes_df$group == "Pathway")
-          idx_met <- which(nodes_df$group == "Metabolite")
-
-          r_mic <- 200 + (length(idx_mic) * 15)
-          r_path <- 150 + (length(idx_path) * 20)
-          r_met <- 100 + (length(idx_met) * 25)
-
-          x_mic <- -(r_mic + r_path + 500)
-          x_path <- 0
-          x_met <- (r_path + r_met + 500)
-
-          if (length(idx_mic) > 0) {
-            ang <- seq(0, 2 * pi, length.out = length(idx_mic) + 1)[1:length(idx_mic)]
-            nodes_df$x[idx_mic] <- x_mic + r_mic * cos(ang)
-            nodes_df$y[idx_mic] <- r_mic * sin(ang)
-          }
-          if (length(idx_path) > 0) {
-            ang <- seq(0, 2 * pi, length.out = length(idx_path) + 1)[1:length(idx_path)]
-            nodes_df$x[idx_path] <- x_path + r_path * cos(ang)
-            nodes_df$y[idx_path] <- r_path * sin(ang)
-          }
-          if (length(idx_met) > 0) {
-            ang <- seq(0, 2 * pi, length.out = length(idx_met) + 1)[1:length(idx_met)]
-            nodes_df$x[idx_met] <- x_met + r_met * cos(ang)
-            nodes_df$y[idx_met] <- r_met * sin(ang)
-          }
-
-          # Canvas legend configuration
-          max_y <- max(nodes_df$y, na.rm = TRUE)
-          legend_y <- max_y + 400
-
-          legend_nodes <- data.frame(
-            id = c("LEG_MIC", "LEG_PATH", "LEG_MET"),
-            label = c("Microbe", "Pathway", "Metabolite"),
-            group = c("Microbe", "Pathway", "Metabolite"),
-            size = c(60, 60, 60),
-            title = c("", "", ""),
-            x = c(-300, 0, 300),
-            y = c(legend_y, legend_y, legend_y),
-            stringsAsFactors = FALSE
-          )
-          nodes_df <- rbind(nodes_df, legend_nodes)
+          nodes_df <- compute_circular_layout(nodes_df)
+          nodes_df <- add_legend_nodes(nodes_df)
 
           # JavaScript configuration for interactive UI
           js_custom_panel <- paste0("
@@ -331,9 +297,45 @@ con_mln_int <- function(
               shapeSel.addEventListener('change', updateGraph);
             });
 
+            var saveTableBtn = document.createElement('button');
+            saveTableBtn.innerHTML = 'Save Network Table (CSV)';
+            saveTableBtn.style.marginTop = '15px';
+            saveTableBtn.style.padding = '8px 16px';
+            saveTableBtn.style.backgroundColor = '#f8fafc';
+            saveTableBtn.style.color = '#0f172a';
+            saveTableBtn.style.border = '1px solid #cbd5e1';
+            saveTableBtn.style.borderRadius = '6px';
+            saveTableBtn.style.cursor = 'pointer';
+            saveTableBtn.style.fontWeight = 'bold';
+            saveTableBtn.style.width = '100%';
+            saveTableBtn.style.marginBottom = '4px';
+            saveTableBtn.onclick = function() {
+              var edgesDS = visEngine.body.data.edges;
+              var allEdges = edgesDS.get();
+              var csvContent = 'data:text/csv;charset=utf-8,From,To,Value,Type,Direction\\n';
+              allEdges.forEach(function(e) {
+                 var fromLabel = e.from ? e.from.toString() : '';
+                 var toLabel = e.to ? e.to.toString() : '';
+                 if (fromLabel.indexOf(',') !== -1) fromLabel = '\"' + fromLabel + '\"';
+                 if (toLabel.indexOf(',') !== -1) toLabel = '\"' + toLabel + '\"';
+                 var edgeVal = e.value !== undefined ? e.value : '';
+                 var edgeType = e.type !== undefined ? e.type : '';
+                 var edgeDir = e.direction !== undefined ? e.direction : '';
+                 csvContent += fromLabel + ',' + toLabel + ',' + edgeVal + ',' + edgeType + ',' + edgeDir + '\\n';
+              });
+              var encodedUri = encodeURI(csvContent);
+              var link = document.createElement('a');
+              link.setAttribute('href', encodedUri);
+              link.setAttribute('download', 'network_table.csv');
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            };
+            panel.appendChild(saveTableBtn);
+
             var saveBtn = document.createElement('button');
             saveBtn.innerHTML = 'Save Network';
-            saveBtn.style.marginTop = '15px';
+            saveBtn.style.marginTop = '4px';
             saveBtn.style.padding = '8px 16px';
             saveBtn.style.backgroundColor = '#f1f5f9';
             saveBtn.style.color = '#0f172a';
@@ -372,7 +374,7 @@ con_mln_int <- function(
           # Render network
           vis_plot <- visNetwork::visNetwork(nodes_df, edges, width = "100%", height = "95vh") |>
             visNetwork::visNodes(font = list(color = "#0f172a", size = 35, face = "sans-serif", background = "rgba(255,255,255,0.85)"), borderWidth = 1.5, shadow = TRUE) |>
-            visNetwork::visEdges(smooth = FALSE, color = list(color = "rgba(180, 180, 180, 0.4)", highlight = "#e11d48"), width = 1) |>
+            visNetwork::visEdges(smooth = FALSE, width = 1) |>
             visNetwork::visGroups(groupname = "Microbe", color = list(background = "#9AA374", border = "#7A825C", highlight = "#B4BE89"), shape = "triangle") |>
             visNetwork::visGroups(groupname = "Pathway", color = list(background = "#C1ABAD", border = "#9A898A", highlight = "#D8C5C7"), shape = "dot") |>
             visNetwork::visGroups(groupname = "Metabolite", color = list(background = "#4E7286", border = "#3A5565", highlight = "#6392AB"), shape = "square") |>

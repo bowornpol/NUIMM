@@ -322,43 +322,50 @@ con_ppn_int <- function(
 
       if (length(sig_paths) > 1) {
         combos <- combn(sig_paths, 2, simplify = FALSE)
+        jaccard_list <- vector("list", length(combos))
         if (ppn_interaction_method == "gsea_core") {
           genes_list <- strsplit(gsea_out$core_enrichment, "/")
           names(genes_list) <- sig_paths
-          for (cb in combos) {
+          for (ci in seq_along(combos)) {
+            cb <- combos[[ci]]
             u <- length(union(genes_list[[cb[1]]], genes_list[[cb[2]]]))
             idx <- ifelse(u > 0, length(intersect(genes_list[[cb[1]]], genes_list[[cb[2]]])) / u, 0)
-            if (idx >= ppn_jaccard_cutoff) jaccard_res <- rbind(jaccard_res, data.frame(FunctionID_1 = cb[1], FunctionID_2 = cb[2], jaccard_index = idx))
+            if (idx >= ppn_jaccard_cutoff) jaccard_list[[ci]] <- data.frame(FunctionID_1 = cb[1], FunctionID_2 = cb[2], jaccard_index = idx)
           }
         } else if (ppn_interaction_method == "database") {
-          for (cb in combos) {
+          for (ci in seq_along(combos)) {
+            cb <- combos[[ci]]
             g1 <- if (cb[1] %in% names(term_groups)) term_groups[[cb[1]]] else character(0)
             g2 <- if (cb[2] %in% names(term_groups)) term_groups[[cb[2]]] else character(0)
             u <- length(union(g1, g2))
             idx <- ifelse(u > 0, length(intersect(g1, g2)) / u, 0)
-            if (idx >= ppn_jaccard_cutoff) jaccard_res <- rbind(jaccard_res, data.frame(FunctionID_1 = cb[1], FunctionID_2 = cb[2], jaccard_index = idx))
+            if (idx >= ppn_jaccard_cutoff) jaccard_list[[ci]] <- data.frame(FunctionID_1 = cb[1], FunctionID_2 = cb[2], jaccard_index = idx)
           }
         } else if (ppn_interaction_method == "metabolite") {
-          for (cb in combos) {
+          for (ci in seq_along(combos)) {
+            cb <- combos[[ci]]
             m1 <- if (cb[1] %in% names(compound_groups)) compound_groups[[cb[1]]] else character(0)
             m2 <- if (cb[2] %in% names(compound_groups)) compound_groups[[cb[2]]] else character(0)
             u <- length(union(m1, m2))
             idx <- ifelse(u > 0, length(intersect(m1, m2)) / u, 0)
-            if (idx >= ppn_jaccard_cutoff) jaccard_res <- rbind(jaccard_res, data.frame(FunctionID_1 = cb[1], FunctionID_2 = cb[2], jaccard_index = idx))
+            if (idx >= ppn_jaccard_cutoff) jaccard_list[[ci]] <- data.frame(FunctionID_1 = cb[1], FunctionID_2 = cb[2], jaccard_index = idx)
           }
         } else if (ppn_interaction_method == "rel_pathway") {
-          for (cb in combos) {
-            # Check if this exact pair exists in the knowledge map
+          for (ci in seq_along(combos)) {
+            cb <- combos[[ci]]
             pair_exists <- any(
               (knowledge_map$Pathway1 == cb[1] & knowledge_map$Pathway2 == cb[2]) |
               (knowledge_map$Pathway1 == cb[2] & knowledge_map$Pathway2 == cb[1])
             )
             if (pair_exists && 1 >= ppn_jaccard_cutoff) {
-              jaccard_res <- rbind(jaccard_res, data.frame(FunctionID_1 = cb[1], FunctionID_2 = cb[2], jaccard_index = 1))
+              jaccard_list[[ci]] <- data.frame(FunctionID_1 = cb[1], FunctionID_2 = cb[2], jaccard_index = 1)
             }
           }
         }
+        jaccard_res <- do.call(rbind, Filter(Negate(is.null), jaccard_list))
+        if (is.null(jaccard_res)) jaccard_res <- data.frame()
       }
+
       message(sprintf("    Pathway-Pathway network generated: %d Jaccard edges.", nrow(jaccard_res)))
       jpath <- file.path(output_dir, paste0("pathway_jaccard_", comp_name, ".csv"))
       write.csv(jaccard_res, jpath, row.names = FALSE)

@@ -27,14 +27,17 @@
 #' @param ppn_compound_custom_map Path to custom compound-pathway CSV. Required when ppn_compound_map = "custom".
 #' @param comparisons_list Optional list of pairwise group comparisons.
 #' @param mpn_filtering Microbe-pathway filtering: "unfiltered", "mean", "median", or "topN\%".
-#' @param mpn_mode Microbe-pathway mode: "delta" (default) computes paired changes per subject with Wilcoxon testing; "pooled" combines all samples from both groups.
+#' @param mpn_mode Microbe-pathway mode: "delta" computes paired changes per subject; "pooled" combines all samples; "differential" computes unpaired cross-sectional differences via Wilcoxon.
+#' @param mpn_filter_by Significance filter for MPN delta/differential modes: "pvalue" (default) or "padjust".
+#' @param mpn_pvalue_cutoff P-value cutoff for MPN significance filtering (default 0.05).
+#' @param mpn_padjust_cutoff Adjusted p-value cutoff for MPN significance filtering (default 0.05).
 #' @param pmn_corr_method Correlation method for pathway-metabolite: "spearman", "pearson", or "kendall".
 #' @param pmn_filter_by Significance filter: "none", "pvalue", or "padjust".
 #' @param pmn_corr_cutoff Minimum absolute correlation for pathway-metabolite edges.
 #' @param pmn_pvalue_cutoff P-value cutoff for pathway-metabolite edges.
 #' @param pmn_padjust_cutoff Adjusted p-value cutoff for pathway-metabolite edges.
 #' @param pmn_padjust_method P-value adjustment method for pathway-metabolite correlations.
-#' @param pmn_mode Correlation mode: "delta" (default) computes paired deltas then correlates; "pooled" uses all samples from both groups.
+#' @param pmn_mode Correlation mode: "delta" computes paired deltas; "pooled" uses all samples; "differential" tests for correlation differences between groups (Fisher Z for Pearson, permutation test for Spearman/Kendall).
 #' @param visualize Logical. If TRUE, generates interactive HTML visualization.
 #' @param layout_method Network layout algorithm.
 #' @param node_colors Named character vector of colors for each node group.
@@ -59,9 +62,11 @@ con_mln <- function(
   ppn_compound_map = c("kegg", "metacyc", "custom"), ppn_compound_custom_map = NULL,
   comparisons_list = NULL,
   mpn_filtering = c("unfiltered", "mean", "median", "top10%", "top25%", "top50%", "top75%"),
-  mpn_mode = c("delta", "pooled"),
+  mpn_mode = c("delta", "pooled", "differential"),
+  mpn_filter_by = c("pvalue", "padjust"),
+  mpn_pvalue_cutoff = 0.05, mpn_padjust_cutoff = 0.05,
   pmn_corr_method = c("spearman", "pearson", "kendall"),
-  pmn_mode = c("delta", "pooled"),
+  pmn_mode = c("delta", "pooled", "differential"),
   pmn_filter_by = c("none", "pvalue", "padjust"),
   pmn_corr_cutoff = 0.3, pmn_pvalue_cutoff = 0.05, pmn_padjust_cutoff = 0.05,
   pmn_padjust_method = "fdr",
@@ -73,17 +78,29 @@ con_mln <- function(
   format <- match.arg(format)
   ppn_da_method <- match.arg(ppn_da_method)
   ppn_map_database <- match.arg(ppn_map_database)
+  ppn_rank_by <- match.arg(ppn_rank_by)
   ppn_interaction_method <- match.arg(ppn_interaction_method)
   ppn_padjust_method <- match.arg(ppn_padjust_method)
   ppn_compound_map <- match.arg(ppn_compound_map)
   mpn_filtering <- match.arg(mpn_filtering)
   mpn_mode <- match.arg(mpn_mode)
+  mpn_filter_by <- match.arg(mpn_filter_by)
   pmn_corr_method <- match.arg(pmn_corr_method)
   pmn_mode <- match.arg(pmn_mode)
   pmn_filter_by <- match.arg(pmn_filter_by)
   ppn_filter_by <- match.arg(ppn_filter_by)
 
+  validate_comparisons_structure(comparisons_list)
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+
+  # Read metadata once to derive comparisons for consistent sub-layer dispatching
+  meta_temp <- read_input_file(metadata_file, file_type = "csv", stringsAsFactors = FALSE)
+  if (is.null(comparisons_list)) {
+    conditions <- sort(unique(meta_temp$class))
+    derived_comparisons <- combn(conditions, 2, simplify = FALSE)
+  } else {
+    derived_comparisons <- comparisons_list
+  }
 
   message("Initializing data processing pipeline (Format: ", format, ").")
   processed_contrib_file <- file.path(output_dir, "processed_contribution.csv")
@@ -109,7 +126,8 @@ con_mln <- function(
   } else if (format == "humann") {
     df <- read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE, check.names = FALSE)
     long_df <- tidyr::pivot_longer(df, cols = -1, names_to = "SampleID", values_to = "taxon_function_abun")
-    split_data <- stringr::str_split_fixed(long_df[[1]], "\\|", 2)
+    split_parts <- strsplit(as.character(long_df[[1]]), "|", fixed = TRUE)
+    split_data <- t(vapply(split_parts, function(x) c(x[1], if (length(x) >= 2) x[2] else ""), character(2)))
     long_df$FunctionID <- split_data[, 1]
     long_df$FeatureID <- split_data[, 2]
     long_df$TaxonID <- long_df$FeatureID
@@ -133,14 +151,16 @@ con_mln <- function(
   for (i in seq_along(ppn_results$gsea_paths)) {
     curr_gsea <- ppn_results$gsea_paths[i]
     curr_jaccard <- ppn_results$jaccard_paths[i]
+    # Use the matching comparison for this GSEA result
+    curr_comp <- if (i <= length(derived_comparisons)) list(derived_comparisons[[i]]) else comparisons_list
     message("Initiating multi-layered integration: ", basename(curr_gsea))
 
-    curr_mpn <- con_mpn_int(processed_contrib_file, metadata_file, NULL, file.path(output_dir, "mpn_output"), mpn_filtering, mpn_mode, comparisons_list)[1]
+    curr_mpn <- con_mpn_int(processed_contrib_file, metadata_file, NULL, file.path(output_dir, "mpn_output"), mpn_filtering, mpn_mode, mpn_filter_by, mpn_pvalue_cutoff, mpn_padjust_cutoff, curr_comp)[1]
     curr_pmn <- con_pmn_int(
       path_abun_file, met_con_file, curr_gsea, metadata_file, file.path(output_dir, "pmn_output"),
       pmn_corr_method, pmn_mode, pmn_filter_by, pmn_corr_cutoff, pmn_pvalue_cutoff, 
       pmn_padjust_cutoff, pmn_padjust_method,
-      comparisons_list
+      curr_comp
     )[1]
 
     res_path <- con_mln_int(

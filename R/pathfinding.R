@@ -10,7 +10,7 @@ utils::globalVariables(c("from", "to", "edge_score", "x", "y", "xend", "yend", "
 #' @param source_node Name of the starting node (or NULL for interactive selection).
 #' @param target_node Name of the ending node (or NULL for interactive selection).
 #' @param output_directory Path to save results.
-#' @param visualize Logical. If TRUE, generates interactive HTML. Defaults to TRUE.
+#' @param visualize Logical. If TRUE, generates interactive HTML.
 #' @return Invisible NULL. Results are written to `output_directory`.
 #' @export
 find_path <- function(
@@ -79,34 +79,32 @@ find_path <- function(
     edges_df$title <- "<div style='padding:10px; font-family:sans-serif;'><b>Value:</b> 1</div>"
   }
 
-  # Circle layout
-  nodes_df$x <- 0; nodes_df$y <- 0
-  idx_mic <- which(nodes_df$group == "Microbe")
-  idx_path <- which(nodes_df$group == "Pathway")
-  idx_met <- which(nodes_df$group == "Metabolite")
+  nodes_df <- compute_circular_layout(nodes_df)
+  nodes_df <- add_legend_nodes(nodes_df)
 
-  r_mic <- 200 + length(idx_mic) * 15
-  r_path <- 150 + length(idx_path) * 20
-  r_met <- 100 + length(idx_met) * 25
-  x_mic <- -(r_mic + r_path + 500); x_path <- 0; x_met <- r_path + r_met + 500
-
-  if (length(idx_mic) > 0) { ang <- seq(0, 2*pi, length.out=length(idx_mic)+1)[1:length(idx_mic)]; nodes_df$x[idx_mic] <- x_mic + r_mic*cos(ang); nodes_df$y[idx_mic] <- r_mic*sin(ang) }
-  if (length(idx_path) > 0) { ang <- seq(0, 2*pi, length.out=length(idx_path)+1)[1:length(idx_path)]; nodes_df$x[idx_path] <- x_path + r_path*cos(ang); nodes_df$y[idx_path] <- r_path*sin(ang) }
-  if (length(idx_met) > 0) { ang <- seq(0, 2*pi, length.out=length(idx_met)+1)[1:length(idx_met)]; nodes_df$x[idx_met] <- x_met + r_met*cos(ang); nodes_df$y[idx_met] <- r_met*sin(ang) }
-
-  max_y <- max(nodes_df$y, na.rm = TRUE)
-  legend_y <- max_y + 400
-  legend_nodes <- data.frame(
-    id = c("LEG_MIC", "LEG_PATH", "LEG_MET"),
-    label = c("Microbe", "Pathway", "Metabolite"),
-    title = c("", "", ""),
-    group = c("Microbe", "Pathway", "Metabolite"),
-    size = c(60, 60, 60),
-    x = c(-300, 0, 300),
-    y = c(legend_y, legend_y, legend_y),
-    stringsAsFactors = FALSE
-  )
-  nodes_df <- rbind(nodes_df, legend_nodes)
+  # Server-side Dijkstra if both source and target are provided
+  output_csv_path <- NULL
+  if (!is.null(source_node) && !is.null(target_node)) {
+    message("[2/2] Running server-side Dijkstra shortest path.")
+    g_path <- igraph::shortest_paths(g, from = source_node, to = target_node, output = "both")
+    if (length(g_path$vpath[[1]]) > 0) {
+      path_nodes <- igraph::V(g)$name[g_path$vpath[[1]]]
+      path_edges_idx <- g_path$epath[[1]]
+      path_edge_data <- network_data[path_edges_idx, , drop = FALSE]
+      path_df <- data.frame(
+        step = seq_along(path_nodes),
+        node = path_nodes,
+        group = as.character(determine_node_groups(path_nodes, network_data, source_col, target_col)),
+        stringsAsFactors = FALSE
+      )
+      output_csv_path <- file.path(output_directory, paste0("shortest_path_", cleaned_input_file_name, ".csv"))
+      write.csv(path_df, output_csv_path, row.names = FALSE)
+      message(sprintf("  Shortest path (%d nodes): %s", length(path_nodes), paste(path_nodes, collapse = " -> ")))
+      message("  Path saved: ", basename(output_csv_path))
+    } else {
+      message("  No path found between '", source_node, "' and '", target_node, "'.")
+    }
+  }
 
   if (visualize) {
     if (!requireNamespace("visNetwork", quietly = TRUE) || !requireNamespace("htmlwidgets", quietly = TRUE)) {
@@ -400,5 +398,5 @@ find_path <- function(
   }
 
   message("[2/2] Pathfinding algorithm completed.")
-  invisible(NULL)
+  invisible(output_csv_path)
 }
