@@ -22,6 +22,7 @@ read_input_file <- function(file_path, file_type = NULL, ...) {
 
   if (requireNamespace("data.table", quietly = TRUE)) {
     # Fast read using data.table
+    if (!"fill" %in% names(args)) args$fill <- Inf
     data <- do.call(data.table::fread, c(list(file = file_path, data.table = FALSE), args))
   } else {
     # Fallback to base R and guess separator
@@ -146,6 +147,43 @@ get_ctrl_drag_js <- function() {
   "
 }
 
+#' Strip group suffix from sample IDs (regex-safe)
+#'
+#' Uses an anchored, escaped pattern so group names containing regex
+#' metacharacters (e.g. ".", "+") are matched literally.
+#'
+#' @param ids Character vector of sample IDs.
+#' @param group Character string: the group label to strip.
+#' @return Character vector with the trailing `_<group>` removed.
+#' @keywords internal
+#' @noRd
+strip_group_suffix <- function(ids, group) {
+  # Escape regex metacharacters so the group name is matched literally
+  meta_chars <- c("\\", "[", "]", "(", ")", "{", "}", ".", "*", "+", "?", "^", "$", "|")
+  esc <- group
+  for (ch in meta_chars) {
+    esc <- gsub(ch, paste0("\\", ch), esc, fixed = TRUE)
+  }
+  sub(paste0("_", esc, "$"), "", ids)
+}
+
+#' Derive pairwise comparisons from metadata or use user-supplied list
+#'
+#' Centralizes the repeated pattern of `sort(unique(class)); combn(...,2)`.
+#'
+#' @param meta Data frame with a `class` column.
+#' @param comparisons_list Optional user-supplied list of comparisons.
+#' @return A list of length-2 character vectors.
+#' @keywords internal
+#' @noRd
+derive_comparisons <- function(meta, comparisons_list = NULL) {
+  if (!is.null(comparisons_list)) {
+    return(comparisons_list)
+  }
+  conditions <- sort(unique(meta$class))
+  combn(conditions, 2, simplify = FALSE)
+}
+
 #' Determine node groups from network data and falls back to regex
 #' @keywords internal
 #' @noRd
@@ -174,6 +212,12 @@ determine_node_groups <- function(nodes, network_data, source_col, target_col) {
     return(groups)
   }
 
+  warning("No 'type' or 'edge_type' column found in network data; falling back to regex-based node classification. ",
+    "This heuristic may misclassify nodes whose names contain pathway-related keywords ",
+    "(e.g. 'degradation', 'biosynthesis'). Consider adding a 'type' column.",
+    call. = FALSE
+  )
+
   for (node in nodes) {
     if (grepl("d__|p__|c__|o__|f__|g__|s__|Bacteria", node)) {
       groups[node] <- "Microbe"
@@ -194,10 +238,13 @@ determine_node_groups <- function(nodes, network_data, source_col, target_col) {
 #' @keywords internal
 #' @noRd
 save_widget_safe <- function(widget, file, title = "NUIMM") {
-  has_pandoc <- tryCatch({
-    info <- rmarkdown::find_pandoc()
-    !is.null(info$dir) && nzchar(info$dir)
-  }, error = function(e) FALSE)
+  has_pandoc <- tryCatch(
+    {
+      info <- rmarkdown::find_pandoc()
+      !is.null(info$dir) && nzchar(info$dir)
+    },
+    error = function(e) FALSE
+  )
 
   if (has_pandoc) {
     htmlwidgets::saveWidget(widget, file = file, selfcontained = TRUE, title = title)
@@ -250,25 +297,31 @@ add_legend_nodes <- function(nodes_df) {
   legend_list <- list()
   for (col in colnames(nodes_df)) {
     legend_list[[col]] <- switch(col,
-      id    = c("LEG_MIC", "LEG_PATH", "LEG_MET"),
+      id = c("LEG_MIC", "LEG_PATH", "LEG_MET"),
       label = c("Microbe", "Pathway", "Metabolite"),
       group = c("Microbe", "Pathway", "Metabolite"),
-      size  = c(60, 60, 60),
-      x     = c(-300, 0, 300),
-      y     = rep(legend_y, 3),
+      size = c(60, 60, 60),
+      x = c(-300, 0, 300),
+      y = rep(legend_y, 3),
       title = c("", "", ""),
-      { if (is.numeric(nodes_df[[col]])) rep(0, 3) else rep("", 3) }
+      {
+        if (is.numeric(nodes_df[[col]])) rep(0, 3) else rep("", 3)
+      }
     )
   }
   legend_df <- as.data.frame(legend_list, stringsAsFactors = FALSE)
   rbind(nodes_df, legend_df)
 }
 
-#' Validate comparisons_list structure (type and shape only, not group existence)
+#' Validate comparisons_list structure and optionally check group existence
+#' @param comparisons_list The list to validate.
+#' @param metadata Optional data frame with a `class` column for group-existence checks.
 #' @keywords internal
 #' @noRd
-validate_comparisons_structure <- function(comparisons_list) {
-  if (is.null(comparisons_list)) return(invisible(NULL))
+validate_comparisons_structure <- function(comparisons_list, metadata = NULL) {
+  if (is.null(comparisons_list)) {
+    return(invisible(NULL))
+  }
   if (!is.list(comparisons_list)) {
     stop("'comparisons_list' must be a list of character vectors, e.g., list(c('V1', 'V3')). Got: ", class(comparisons_list)[1])
   }
@@ -276,6 +329,19 @@ validate_comparisons_structure <- function(comparisons_list) {
     comp <- comparisons_list[[i]]
     if (!is.character(comp) || length(comp) != 2) {
       stop(sprintf("comparisons_list[[%d]] must be a character vector of length 2.", i))
+    }
+  }
+  # Check that specified group names actually exist in metadata
+  if (!is.null(metadata) && "class" %in% colnames(metadata)) {
+    available_groups <- unique(metadata$class)
+    requested_groups <- unique(unlist(comparisons_list))
+    missing <- setdiff(requested_groups, available_groups)
+    if (length(missing) > 0) {
+      stop(sprintf(
+        "comparisons_list references groups not found in metadata$class: %s. Available groups: %s",
+        paste(missing, collapse = ", "),
+        paste(available_groups, collapse = ", ")
+      ))
     }
   }
   invisible(NULL)

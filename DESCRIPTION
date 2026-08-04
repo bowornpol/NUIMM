@@ -28,6 +28,7 @@ Imports:
 Suggests:
     ALDEx2,
     ANCOMBC,
+    BDgraph,
     DESeq2,
     edgeR,
     LinDA,

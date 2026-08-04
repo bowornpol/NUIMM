@@ -26,7 +26,7 @@ utils::globalVariables(c("coef", "pval", "feature", "ID", "core_enrichment", "ge
 #' @param ppn_pvalue_cutoff P-value cutoff for GSEA significance.
 #' @param ppn_padjust_cutoff Adjusted p-value cutoff for GSEA significance.
 #' @param ppn_jaccard_cutoff Minimum Jaccard index to retain edges.
-#' @param ppn_interaction_method Method for defining pathway interactions: "gsea_core", "database", "metabolite", or "rel_pathway".
+#' @param ppn_interaction_method Method for defining pathway interactions: "gsea_core", "database", "metabolite", "rel_pathway", or "bdgraph".
 #' @param ppn_compound_map Compound-pathway database for metabolite Jaccard: "kegg", "metacyc", or "custom". Only used when ppn_interaction_method = "metabolite".
 #' @param ppn_compound_custom_map Path to custom compound-pathway CSV. Required when ppn_compound_map = "custom".
 #' @param comparisons_list Optional list of pairwise group comparisons.
@@ -42,7 +42,7 @@ con_ppn_int <- function(
   ppn_eps = 1e-10, ppn_n_perm = 10000, ppn_seed = FALSE,
   ppn_padjust_method = "fdr", ppn_filter_by = c("none", "pvalue", "padjust"),
   ppn_pvalue_cutoff = 0.05, ppn_padjust_cutoff = 0.05,
-  ppn_jaccard_cutoff = 0.2, ppn_interaction_method = c("gsea_core", "database", "metabolite", "rel_pathway"),
+  ppn_jaccard_cutoff = 0.2, ppn_interaction_method = c("gsea_core", "database", "metabolite", "rel_pathway", "bdgraph"),
   ppn_compound_map = c("kegg", "metacyc", "custom"), ppn_compound_custom_map = NULL,
   comparisons_list = NULL
 ) {
@@ -66,8 +66,7 @@ con_ppn_int <- function(
   rownames(meta) <- meta$SampleID
 
   if (is.null(comparisons_list)) {
-    conditions <- sort(unique(meta$class))
-    comparisons <- combn(conditions, 2, simplify = FALSE)
+    comparisons <- derive_comparisons(meta)
   } else {
     comparisons <- comparisons_list
   }
@@ -144,6 +143,7 @@ con_ppn_int <- function(
 
   gsea_paths <- c()
   jaccard_paths <- c()
+  ppn_comparisons <- list()
 
   for (comp in comparisons) {
     cond1 <- comp[1]
@@ -175,7 +175,8 @@ con_ppn_int <- function(
       maaslin_out <- file.path(output_dir, paste0("maaslin_results_", comp_name))
       fit_data <- Maaslin2::Maaslin2(
         input_data = t(sub_abun), input_metadata = sub_meta, output = maaslin_out, # Maaslin2 requires transposed abundance
-        fixed_effects = "class", reference = c("class", cond1)
+        fixed_effects = "class", reference = c("class", cond1),
+        plot_heatmap = FALSE, plot_scatter = FALSE, cores = 1
       )
       res_df <- fit_data$results
       res_df <- dplyr::rename(res_df, log2FoldChange = coef, pvalue = pval, gene = feature)
@@ -189,7 +190,7 @@ con_ppn_int <- function(
       maaslin3_out <- file.path(output_dir, paste0("maaslin3_results_", comp_name))
       fit_data <- maaslin3::maaslin3(
         input_data = t(sub_abun), input_metadata = sub_meta, output = maaslin3_out,
-        formula = "~ class", reference = paste0("class,", cond1)
+        formula = "~ class", reference = paste0("class,", cond1), cores = 1
       )
       res_file <- file.path(maaslin3_out, "all_results.tsv")
       if (!file.exists(res_file)) stop("MaAsLin3 failed to generate results.")
@@ -370,7 +371,8 @@ con_ppn_int <- function(
       jpath <- file.path(output_dir, paste0("pathway_jaccard_", comp_name, ".csv"))
       write.csv(jaccard_res, jpath, row.names = FALSE)
       jaccard_paths <- c(jaccard_paths, jpath)
+      ppn_comparisons[[length(gsea_paths)]] <- comp
     }
   }
-  return(list(gsea_paths = gsea_paths, jaccard_paths = jaccard_paths))
+  return(list(gsea_paths = gsea_paths, jaccard_paths = jaccard_paths, comparisons = ppn_comparisons))
 }

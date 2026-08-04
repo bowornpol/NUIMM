@@ -27,12 +27,17 @@ con_mpn_int <- function(
   mpn_filter_by <- match.arg(mpn_filter_by)
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-  # Read Data
-  contrib <- read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE)
+  # Read Data efficiently using data.table to prevent out of memory aborts
+  if (requireNamespace("data.table", quietly = TRUE)) {
+    contrib <- data.table::fread(path_con_file, stringsAsFactors = FALSE)
+  } else {
+    contrib <- read_input_file(path_con_file, file_type = "csv", stringsAsFactors = FALSE)
+  }
   meta <- read_input_file(metadata_file, file_type = "csv", stringsAsFactors = FALSE)
 
-  # Merge Metadata
-  merged <- merge(contrib, meta, by = "SampleID")
+  # Merge Metadata Efficiently (Prevents 10GB RAM spike from merge copy)
+  contrib$class <- meta$class[match(contrib$SampleID, meta$SampleID)]
+  merged <- contrib
 
   if (!is.null(taxonomy_file)) {
     taxonomy <- read_input_file(taxonomy_file, file_type = "csv", stringsAsFactors = FALSE)
@@ -47,17 +52,13 @@ con_mpn_int <- function(
 
     if (is.null(comparisons_list)) {
       conditions <- sort(unique(merged$class))
-      if (length(conditions) >= 2) {
-        baseline_grp <- conditions[1]
-        treatment_grp <- conditions[2]
-      } else {
-        baseline_grp <- conditions[1]
-        treatment_grp <- conditions[1]
-      }
+      baseline_grp <- conditions[1]
+      treatment_grp <- if (length(conditions) >= 2) conditions[2] else conditions[1]
     } else {
       baseline_grp <- comparisons_list[[1]][1]
       treatment_grp <- comparisons_list[[1]][2]
     }
+    comp_suffix <- paste0("_", baseline_grp, "_vs_", treatment_grp)
 
     # Filter to only the samples relevant to this comparison
     pool_data <- merged[merged$class %in% c(baseline_grp, treatment_grp), ]
@@ -77,7 +78,7 @@ con_mpn_int <- function(
 
     if (nrow(res) > 0) {
       message(sprintf("    Retained %d microbe-pathway associations (%d taxa).", nrow(res), length(unique(res$TaxonID))))
-      fname <- file.path(output_dir, "mpn_pooled.csv")
+      fname <- file.path(output_dir, paste0("mpn_pooled", comp_suffix, ".csv"))
       write.csv(res, fname, row.names = FALSE)
       output_paths <- c(output_paths, fname)
     }
@@ -92,13 +93,12 @@ con_mpn_int <- function(
       if (length(conditions) >= 2) {
         baseline_grp <- conditions[1]
         treatment_grp <- conditions[2]
-      } else {
-        stop("Delta mode requires at least two groups.")
-      }
+      } else stop("Delta mode requires at least two groups.")
     } else {
       baseline_grp <- comparisons_list[[1]][1]
       treatment_grp <- comparisons_list[[1]][2]
     }
+    comp_suffix <- paste0("_", baseline_grp, "_vs_", treatment_grp)
 
     # Aggregate contributions per sample
     per_sample <- merged |>
@@ -122,8 +122,8 @@ con_mpn_int <- function(
     base_samps <- unique(per_sample$SampleID[per_sample$class == baseline_grp])
     treat_samps <- unique(per_sample$SampleID[per_sample$class == treatment_grp])
 
-    base_subj <- sub(paste0("_", baseline_grp), "", base_samps, fixed = TRUE)
-    treat_subj <- sub(paste0("_", treatment_grp), "", treat_samps, fixed = TRUE)
+    base_subj <- strip_group_suffix(base_samps, baseline_grp)
+    treat_subj <- strip_group_suffix(treat_samps, treatment_grp)
 
     paired_subjs <- intersect(base_subj, treat_subj)
     if (length(paired_subjs) < 3) stop("Not enough paired subjects for delta MPN (need at least 3).")
@@ -134,37 +134,42 @@ con_mpn_int <- function(
     message("    Computing paired subject deltas.")
     
     # Filter to paired subjects
-    per_sample$SubjectID <- sub(paste0("_(", baseline_grp, "|", treatment_grp, ")$"), "", per_sample$SampleID)
+    # Strip group suffix from each sample to derive SubjectID
+    per_sample$SubjectID <- strip_group_suffix(
+      strip_group_suffix(per_sample$SampleID, treatment_grp),
+      baseline_grp
+    )
     dt <- per_sample[per_sample$SubjectID %in% paired_subjs & per_sample$class %in% c(baseline_grp, treatment_grp), ]
     
     # Ensure all combinations are present to handle missing values as zeros
     unique_pairs <- unique(dt[, c("FunctionID", "TaxonID")])
     
-    # Pre-allocate using expand.grid
-    all_combs <- expand.grid(
-      PairIdx = seq_len(nrow(unique_pairs)),
-      SubjectID = paired_subjs,
-      stringsAsFactors = FALSE
+    # Pre-allocate using tidyr::complete for extreme memory efficiency
+    # This avoids the out of memory crash caused by expand.grid on massive datasets
+    all_combs <- dt |>
+      tidyr::complete(
+        tidyr::nesting(FunctionID, TaxonID),
+        SubjectID = paired_subjs,
+        class = c(baseline_grp, treatment_grp),
+        fill = list(taxon_function_abun = 0)
+      ) |>
+      as.data.frame()
+      
+    # Pivot wider to get base and treat in separate columns
+    wide_combs <- tidyr::pivot_wider(
+      all_combs, 
+      id_cols = c("FunctionID", "TaxonID", "SubjectID"),
+      names_from = "class",
+      values_from = "taxon_function_abun",
+      values_fill = 0
     )
-    all_combs$FunctionID <- unique_pairs$FunctionID[all_combs$PairIdx]
-    all_combs$TaxonID <- unique_pairs$TaxonID[all_combs$PairIdx]
-    all_combs$PairIdx <- NULL
     
-    # Merge Baseline data
-    base_dt <- dt[dt$class == baseline_grp, c("FunctionID", "TaxonID", "SubjectID", "taxon_function_abun")]
-    names(base_dt)[4] <- "base_val"
-    all_combs <- merge(all_combs, base_dt, by = c("FunctionID", "TaxonID", "SubjectID"), all.x = TRUE)
+    # Rename for logic compatibility
+    names(wide_combs)[names(wide_combs) == baseline_grp] <- "base_val"
+    names(wide_combs)[names(wide_combs) == treatment_grp] <- "treat_val"
     
-    # Merge Treatment data
-    treat_dt <- dt[dt$class == treatment_grp, c("FunctionID", "TaxonID", "SubjectID", "taxon_function_abun")]
-    names(treat_dt)[4] <- "treat_val"
-    all_combs <- merge(all_combs, treat_dt, by = c("FunctionID", "TaxonID", "SubjectID"), all.x = TRUE)
-    
-    # Fill NAs with 0
-    all_combs$base_val[is.na(all_combs$base_val)] <- 0
-    all_combs$treat_val[is.na(all_combs$treat_val)] <- 0
-    
-    all_combs$delta <- all_combs$treat_val - all_combs$base_val
+    wide_combs$delta <- wide_combs$treat_val - wide_combs$base_val
+    all_combs <- wide_combs
     
     message("    Executing Wilcoxon signed-rank tests.")
     
@@ -203,10 +208,20 @@ con_mpn_int <- function(
       }
 
       if (nrow(res_sig) > 0) {
-        # Compute relative contribution magnitude using the median (matching Wilcoxon)
-        res_sig$taxon_function_abun <- abs(res_sig$median_delta)
-        res_sig$total_abun <- ave(res_sig$taxon_function_abun, res_sig$FunctionID, FUN = sum)
-        res_sig$relative_contribution <- ifelse(res_sig$total_abun == 0, 0, res_sig$taxon_function_abun / res_sig$total_abun)
+        # Compute actual relative contribution from pooled abundance (both timepoints)
+        pooled_contrib <- dt[dt$class %in% c(baseline_grp, treatment_grp), ] |>
+          dplyr::group_by(FunctionID, TaxonID) |>
+          dplyr::summarise(taxon_function_abun = sum(taxon_function_abun), .groups = "drop") |>
+          dplyr::group_by(FunctionID) |>
+          dplyr::mutate(total_abun = sum(taxon_function_abun)) |>
+          dplyr::mutate(relative_contribution = ifelse(total_abun == 0, 0, taxon_function_abun / total_abun)) |>
+          dplyr::ungroup() |>
+          as.data.frame()
+
+        # Merge actual relative contribution into significant results
+        res_sig <- merge(res_sig, pooled_contrib[, c("FunctionID", "TaxonID", "taxon_function_abun", "total_abun", "relative_contribution")],
+                         by = c("FunctionID", "TaxonID"), all.x = TRUE)
+        res_sig$relative_contribution[is.na(res_sig$relative_contribution)] <- 0
 
         # Apply the same topN% / mean / median filter on magnitude
         res_sig <- .mpn_apply_filter(res_sig, mpn_filtering)
@@ -214,7 +229,7 @@ con_mpn_int <- function(
 
       if (nrow(res_sig) > 0) {
         message(sprintf("    Retained %d significant delta associations (%s < %g, %d taxa).", nrow(res_sig), filter_label, cutoff_val, length(unique(res_sig$TaxonID))))
-        fname <- file.path(output_dir, "mpn_delta.csv")
+        fname <- file.path(output_dir, paste0("mpn_delta", comp_suffix, ".csv"))
         write.csv(res_sig, fname, row.names = FALSE)
         output_paths <- c(output_paths, fname)
       } else {
@@ -238,6 +253,7 @@ con_mpn_int <- function(
       baseline_grp <- comparisons_list[[1]][1]
       treatment_grp <- comparisons_list[[1]][2]
     }
+    comp_suffix <- paste0("_", baseline_grp, "_vs_", treatment_grp)
     
     per_sample <- merged |>
       dplyr::group_by(SampleID, FunctionID, TaxonID, class) |>
@@ -254,18 +270,20 @@ con_mpn_int <- function(
     unique_pairs <- unique(per_sample[, c("FunctionID", "TaxonID")])
     all_samps <- unique(merged[merged$class %in% c(baseline_grp, treatment_grp), c("SampleID", "class")])
     
-    all_combs <- expand.grid(
-      PairIdx = seq_len(nrow(unique_pairs)),
-      SampleID = all_samps$SampleID,
-      stringsAsFactors = FALSE
-    )
-    all_combs$FunctionID <- unique_pairs$FunctionID[all_combs$PairIdx]
-    all_combs$TaxonID <- unique_pairs$TaxonID[all_combs$PairIdx]
-    all_combs <- merge(all_combs, all_samps, by="SampleID")
-    all_combs$PairIdx <- NULL
+    # Use tidyr::complete to implicitly fill missing sample-pathway-taxon combinations with 0
+    # This avoids a massive expand.grid and merge that causes Out-Of-Memory crashes
+    dt <- per_sample[per_sample$class %in% c(baseline_grp, treatment_grp), ]
     
-    dt <- merge(all_combs, per_sample, by=c("SampleID", "FunctionID", "TaxonID", "class"), all.x=TRUE)
-    dt$taxon_function_abun[is.na(dt$taxon_function_abun)] <- 0
+    dt <- dt |>
+      tidyr::complete(
+        tidyr::nesting(FunctionID, TaxonID),
+        SampleID = all_samps$SampleID,
+        fill = list(taxon_function_abun = 0)
+      ) |>
+      as.data.frame()
+      
+    # Restore the class column for the newly completed rows
+    dt$class <- all_samps$class[match(dt$SampleID, all_samps$SampleID)]
     
     fast_unpaired_wilcox <- function(val, cls) {
       if (length(unique(cls)) < 2) return(NA_real_)
@@ -300,15 +318,25 @@ con_mpn_int <- function(
       }
 
       if (nrow(res_sig) > 0) {
-        res_sig$taxon_function_abun <- abs(res_sig$median_diff)
-        res_sig$total_abun <- ave(res_sig$taxon_function_abun, res_sig$FunctionID, FUN = sum)
-        res_sig$relative_contribution <- ifelse(res_sig$total_abun == 0, 0, res_sig$taxon_function_abun / res_sig$total_abun)
+        # Compute actual relative contribution from pooled abundance (both groups)
+        pooled_contrib <- dt[dt$class %in% c(baseline_grp, treatment_grp), ] |>
+          dplyr::group_by(FunctionID, TaxonID) |>
+          dplyr::summarise(taxon_function_abun = sum(taxon_function_abun), .groups = "drop") |>
+          dplyr::group_by(FunctionID) |>
+          dplyr::mutate(total_abun = sum(taxon_function_abun)) |>
+          dplyr::mutate(relative_contribution = ifelse(total_abun == 0, 0, taxon_function_abun / total_abun)) |>
+          dplyr::ungroup() |>
+          as.data.frame()
+
+        res_sig <- merge(res_sig, pooled_contrib[, c("FunctionID", "TaxonID", "taxon_function_abun", "total_abun", "relative_contribution")],
+                         by = c("FunctionID", "TaxonID"), all.x = TRUE)
+        res_sig$relative_contribution[is.na(res_sig$relative_contribution)] <- 0
         res_sig <- .mpn_apply_filter(res_sig, mpn_filtering)
       }
       
       if (nrow(res_sig) > 0) {
         message(sprintf("    Retained %d significant differential associations (%s < %g, %d taxa).", nrow(res_sig), filter_label, cutoff_val, length(unique(res_sig$TaxonID))))
-        fname <- file.path(output_dir, "mpn_differential.csv")
+        fname <- file.path(output_dir, paste0("mpn_differential", comp_suffix, ".csv"))
         write.csv(res_sig, fname, row.names = FALSE)
         output_paths <- c(output_paths, fname)
       } else message(sprintf("    No significant differential associations detected (%s < %g).", filter_label, cutoff_val))

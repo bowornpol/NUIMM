@@ -45,6 +45,7 @@ iden_hub <- function(
     stop("Network file must contain columns: 'from' and 'to', OR 'Feature1' and 'Feature2'")
   }
 
+  if (nrow(network_data) == 0) stop("Network file is empty (zero rows). Cannot perform hub identification.")
   g <- igraph::graph_from_data_frame(d = network_data[, c(source_col, target_col)], directed = FALSE)
   message(sprintf("  Network graph instantiated: |V|=%d.", igraph::vcount(g)))
 

@@ -25,6 +25,12 @@ con_mln(
   ppn_padjust_cutoff = 0.05,
   ppn_jaccard_cutoff = 0.2,
   ppn_interaction_method = c("gsea_core", "database", "metabolite", "rel_pathway"),
+  ppn_min_gs_size = 10,
+  ppn_max_gs_size = 500,
+  ppn_exponent = 1,
+  ppn_eps = 1e-10,
+  ppn_n_perm = 10000,
+  ppn_seed = FALSE,
   ppn_compound_map = c("kegg", "metacyc", "custom"),
   ppn_compound_custom_map = NULL,
   comparisons_list = NULL,
@@ -34,6 +40,15 @@ con_mln(
   mpn_filter_by = c("pvalue", "padjust"),
   mpn_pvalue_cutoff = 0.05,
   mpn_padjust_cutoff = 0.05,
+  pmn_method = c("correlation", "bdgraph"),
+  pmn_bdgraph_prior = NULL,
+  pmn_bdgraph_cutoff = 0.5,
+  pmn_bdgraph_iter = 5000,
+  pmn_bdgraph_burnin = NULL,
+  pmn_bdgraph_algorithm = c("bdmcmc", "rjmcmc"),
+  pmn_bdgraph_method = c("gcgm", "ggm"),
+  pmn_bdgraph_jump = 1,
+  pmn_bdgraph_cores = 1,
   pmn_corr_method = c("spearman", "pearson", "kendall"),
   pmn_mode = c("delta", "pooled", "differential"),
   pmn_filter_by = c("none", "pvalue", "padjust"),
@@ -41,10 +56,11 @@ con_mln(
   pmn_pvalue_cutoff = 0.05,
   pmn_padjust_cutoff = 0.05,
   pmn_padjust_method = "fdr",
+  pmn_n_perm = 999,
   visualize = TRUE,
   layout_method = "sugiyama",
   node_colors = c(Microbe = "#9AA374", Pathway = "#C1ABAD", Metabolite = "#4E7286"),
-  node_shapes = c(Microbe = "hexagon", Pathway = "dot", Metabolite = "diamond"),
+  node_shapes = c(Microbe = "square", Pathway = "dot", Metabolite = "diamond"),
   base_node_size = 6,
   plot_width = 12,
   plot_height = 10,
@@ -104,19 +120,44 @@ con_mln(
 
 \item{mpn_padjust_cutoff}{Adjusted p-value cutoff for MPN significance filtering (default 0.05).}
 
-\item{pmn_corr_method}{Correlation method for pathway-metabolite: "spearman", "pearson", or "kendall".}
+\item{pmn_method}{Engine for constructing PMN and PPN layers: "correlation" (default, uses WGCNA)
+or "bdgraph" (Bayesian structural learning via Gaussian Copula Graphical Model).}
 
-\item{pmn_mode}{Correlation mode: "delta" computes paired deltas; "pooled" uses all samples; "differential" tests for correlation differences between groups (Fisher Z for Pearson, permutation test for Spearman/Kendall).}
+\item{pmn_bdgraph_prior}{Path to a prior knowledge CSV mapping pathways to metabolites
+(2 columns: PathwayID, MetaboliteID). Used only when pmn_method = "bdgraph".
+If NULL, uninformative priors (0.5) are used for PMN edges.
+PPN priors are automatically derived from the pathway-gene map_file (used by GSEA).}
 
-\item{pmn_filter_by}{Significance filter: "none", "pvalue", or "padjust".}
+\item{pmn_bdgraph_cutoff}{Minimum absolute delta posterior probability to retain
+BDgraph edges. Default 0.5. Used only when pmn_method = "bdgraph".}
 
-\item{pmn_corr_cutoff}{Minimum absolute correlation for pathway-metabolite edges.}
+\item{pmn_bdgraph_iter}{Number of MCMC iterations for BDgraph. Default 5000.}
 
-\item{pmn_pvalue_cutoff}{P-value cutoff for pathway-metabolite edges.}
+\item{pmn_bdgraph_burnin}{Number of burn-in iterations to discard. Default iter/2.}
 
-\item{pmn_padjust_cutoff}{Adjusted p-value cutoff for pathway-metabolite edges.}
+\item{pmn_bdgraph_algorithm}{MCMC algorithm: "bdmcmc" (Birth-Death, default) or "rjmcmc" (Reversible Jump).}
 
-\item{pmn_padjust_method}{P-value adjustment method for pathway-metabolite correlations.}
+\item{pmn_bdgraph_method}{Statistical model: "gcgm" (Gaussian Copula, default, handles non-normal data) or "ggm" (Gaussian Graphical Model).}
+
+\item{pmn_bdgraph_jump}{Number of links to propose per MCMC step (bdmcmc only). Default 1.}
+
+\item{pmn_bdgraph_cores}{Number of CPU cores for parallel MCMC. Default 1.}
+
+\item{pmn_corr_method}{Correlation method for pathway-metabolite: "spearman", "pearson", or "kendall". Used only when pmn_method = "correlation".}
+
+\item{pmn_mode}{Mode for PMN/PPN construction: "delta" computes paired deltas; "pooled" uses all samples; "differential" computes unpaired differences between groups.}
+
+\item{pmn_filter_by}{Significance filter: "none", "pvalue", or "padjust". Used only when pmn_method = "correlation".}
+
+\item{pmn_corr_cutoff}{Minimum absolute correlation for pathway-metabolite edges. Used only when pmn_method = "correlation".}
+
+\item{pmn_pvalue_cutoff}{P-value cutoff for pathway-metabolite edges. Used only when pmn_method = "correlation".}
+
+\item{pmn_padjust_cutoff}{Adjusted p-value cutoff for pathway-metabolite edges. Used only when pmn_method = "correlation".}
+
+\item{pmn_padjust_method}{P-value adjustment method for pathway-metabolite correlations. Used only when pmn_method = "correlation".}
+
+\item{pmn_n_perm}{Number of permutations for differential PMN mode (Spearman/Kendall). Default 999. Used only when pmn_method = "correlation".}
 
 \item{visualize}{Logical. If TRUE, generates interactive HTML visualization.}
 

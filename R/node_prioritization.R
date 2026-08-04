@@ -38,6 +38,7 @@ node_prior <- function(
   if (!file.exists(multi_layered_network_file)) stop("File not found.")
 
   network_data <- read_input_file(multi_layered_network_file, stringsAsFactors = FALSE)
+  if (nrow(network_data) == 0) stop("Network file is empty (zero rows). Cannot perform node prioritization.")
 
   if (all(c("from", "to") %in% colnames(network_data))) {
     source_col <- "from"
@@ -109,11 +110,7 @@ node_prior <- function(
 
     max_steps <- ceiling(1 / time_step_interval)
     for (step in seq_len(max_steps)) {
-      nH <- numeric(n)
-      for (i in seq_len(n)) {
-        lh <- deg[i] * H[i] - sum(adj[i, ] * H)
-        nH[i] <- H[i] - time_step_interval * lh
-      }
+      nH <- H - time_step_interval * (deg * H - as.vector(adj %*% H))
       # Check stabilization
       if (step >= stabilization_window_size) {
         rk_new <- rank(nH); rk_old <- rank(H)

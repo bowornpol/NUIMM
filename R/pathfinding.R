@@ -40,6 +40,7 @@ find_path <- function(
     stop("Network file must contain columns: 'from' and 'to', OR 'Feature1' and 'Feature2'")
   }
 
+  if (nrow(network_data) == 0) stop("Network file is empty (zero rows). Cannot perform pathfinding.")
   g <- igraph::graph_from_data_frame(d = network_data, directed = FALSE)
 
   if ("edge_score" %in% colnames(network_data)) {
@@ -86,6 +87,10 @@ find_path <- function(
   output_csv_path <- NULL
   if (!is.null(source_node) && !is.null(target_node)) {
     message("[2/2] Running server-side Dijkstra shortest path.")
+    # Validate that source and target nodes exist in the graph
+    all_node_names <- igraph::V(g)$name
+    if (!(source_node %in% all_node_names)) stop(sprintf("Source node '%s' not found in the network. Available nodes: %s", source_node, paste(head(all_node_names, 10), collapse = ", ")))
+    if (!(target_node %in% all_node_names)) stop(sprintf("Target node '%s' not found in the network. Available nodes: %s", target_node, paste(head(all_node_names, 10), collapse = ", ")))
     g_path <- igraph::shortest_paths(g, from = source_node, to = target_node, output = "both")
     if (length(g_path$vpath[[1]]) > 0) {
       path_nodes <- igraph::V(g)$name[g_path$vpath[[1]]]

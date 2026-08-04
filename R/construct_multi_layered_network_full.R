@@ -22,7 +22,7 @@
 #' @param ppn_filter_by Significance filter for GSEA: "none", "pvalue", or "padjust".
 #' @param ppn_padjust_cutoff Adjusted p-value cutoff for GSEA significance.
 #' @param ppn_jaccard_cutoff Minimum Jaccard index to retain pathway-pathway edges.
-#' @param ppn_interaction_method Method for defining pathway interactions: "gsea_core", "database", "metabolite", or "rel_pathway".
+#' @param ppn_interaction_method Method for defining pathway interactions: "gsea_core", "database", "metabolite", "rel_pathway", or "bdgraph".
 #' @param ppn_compound_map Compound-pathway database for metabolite Jaccard: "kegg", "metacyc", or "custom". Only used when ppn_interaction_method = "metabolite".
 #' @param ppn_compound_custom_map Path to custom compound-pathway CSV. Required when ppn_compound_map = "custom".
 #' @param comparisons_list Optional list of pairwise group comparisons.
@@ -31,13 +31,29 @@
 #' @param mpn_filter_by Significance filter for MPN delta/differential modes: "pvalue" (default) or "padjust".
 #' @param mpn_pvalue_cutoff P-value cutoff for MPN significance filtering (default 0.05).
 #' @param mpn_padjust_cutoff Adjusted p-value cutoff for MPN significance filtering (default 0.05).
-#' @param pmn_corr_method Correlation method for pathway-metabolite: "spearman", "pearson", or "kendall".
-#' @param pmn_filter_by Significance filter: "none", "pvalue", or "padjust".
-#' @param pmn_corr_cutoff Minimum absolute correlation for pathway-metabolite edges.
-#' @param pmn_pvalue_cutoff P-value cutoff for pathway-metabolite edges.
-#' @param pmn_padjust_cutoff Adjusted p-value cutoff for pathway-metabolite edges.
-#' @param pmn_padjust_method P-value adjustment method for pathway-metabolite correlations.
-#' @param pmn_mode Correlation mode: "delta" computes paired deltas; "pooled" uses all samples; "differential" tests for correlation differences between groups (Fisher Z for Pearson, permutation test for Spearman/Kendall).
+#' @param pmn_method Engine for constructing PMN and PPN layers: "correlation" (default, uses WGCNA)
+#'   or "bdgraph" (Bayesian structural learning via Gaussian Copula Graphical Model).
+#' @param pmn_bdgraph_prior Path to a prior knowledge CSV mapping pathways to metabolites
+#'   (2 columns: PathwayID, MetaboliteID). Used only when pmn_method = "bdgraph".
+#'   If NULL, uninformative priors (0.5) are used for PMN edges.
+#'   PPN priors are automatically derived from the pathway-gene map_file (used by GSEA).
+#' @param pmn_bdgraph_cutoff Minimum absolute delta posterior probability to retain
+#'   BDgraph edges. Default 0.5. Used only when pmn_method = "bdgraph".
+#' @param pmn_bdgraph_iter Number of MCMC iterations for BDgraph. Default 5000.
+#' @param pmn_bdgraph_burnin Number of burn-in iterations to discard. Default iter/2.
+#' @param pmn_bdgraph_algorithm MCMC algorithm: "bdmcmc" (Birth-Death, default) or "rjmcmc" (Reversible Jump).
+#' @param pmn_bdgraph_method Statistical model: "gcgm" (Gaussian Copula, default, handles non-normal data) or "ggm" (Gaussian Graphical Model).
+#' @param pmn_bdgraph_jump Number of links to propose per MCMC step (bdmcmc only). Default 1.
+#' @param pmn_bdgraph_cores Number of CPU cores for parallel MCMC. Default 1.
+#' @param ppn_bdgraph_min_shared Minimum shared genes required to inject 0.9 prior for PPN. Default 1.
+#' @param pmn_corr_method Correlation method for pathway-metabolite: "spearman", "pearson", or "kendall". Used only when pmn_method = "correlation".
+#' @param pmn_filter_by Significance filter: "none", "pvalue", or "padjust". Used only when pmn_method = "correlation".
+#' @param pmn_corr_cutoff Minimum absolute correlation for pathway-metabolite edges. Used only when pmn_method = "correlation".
+#' @param pmn_pvalue_cutoff P-value cutoff for pathway-metabolite edges. Used only when pmn_method = "correlation".
+#' @param pmn_padjust_cutoff Adjusted p-value cutoff for pathway-metabolite edges. Used only when pmn_method = "correlation".
+#' @param pmn_padjust_method P-value adjustment method for pathway-metabolite correlations. Used only when pmn_method = "correlation".
+#' @param pmn_mode Mode for PMN/PPN construction: "delta" computes paired deltas; "pooled" uses all samples; "differential" computes unpaired differences between groups.
+#' @param pmn_n_perm Number of permutations for differential PMN mode (Spearman/Kendall). Default 999. Used only when pmn_method = "correlation".
 #' @param visualize Logical. If TRUE, generates interactive HTML visualization.
 #' @param layout_method Network layout algorithm.
 #' @param node_colors Named character vector of colors for each node group.
@@ -58,21 +74,34 @@ con_mln <- function(
   ppn_padjust_method = c("fdr", "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "none"),
   ppn_filter_by = c("none", "pvalue", "padjust"),
   ppn_pvalue_cutoff = 0.05, ppn_padjust_cutoff = 0.05, ppn_jaccard_cutoff = 0.2,
-  ppn_interaction_method = c("gsea_core", "database", "metabolite", "rel_pathway"),
+  ppn_interaction_method = c("gsea_core", "database", "metabolite", "rel_pathway", "bdgraph"),
+  ppn_min_gs_size = 10, ppn_max_gs_size = 500, ppn_exponent = 1, ppn_eps = 1e-10,
+  ppn_n_perm = 10000, ppn_seed = FALSE,
   ppn_compound_map = c("kegg", "metacyc", "custom"), ppn_compound_custom_map = NULL,
   comparisons_list = NULL,
   mpn_filtering = c("unfiltered", "mean", "median", "top10%", "top25%", "top50%", "top75%"),
   mpn_mode = c("delta", "pooled", "differential"),
   mpn_filter_by = c("pvalue", "padjust"),
   mpn_pvalue_cutoff = 0.05, mpn_padjust_cutoff = 0.05,
+  pmn_method = c("correlation", "bdgraph"),
+  pmn_bdgraph_prior = NULL,
+  pmn_bdgraph_cutoff = 0.5,
+  pmn_bdgraph_iter = 5000,
+  pmn_bdgraph_burnin = NULL,
+  pmn_bdgraph_algorithm = c("bdmcmc", "rjmcmc"),
+  pmn_bdgraph_method = c("gcgm", "ggm"),
+  pmn_bdgraph_jump = 1,
+  pmn_bdgraph_cores = 1,
+  ppn_bdgraph_min_shared = 1,
   pmn_corr_method = c("spearman", "pearson", "kendall"),
   pmn_mode = c("delta", "pooled", "differential"),
   pmn_filter_by = c("none", "pvalue", "padjust"),
   pmn_corr_cutoff = 0.3, pmn_pvalue_cutoff = 0.05, pmn_padjust_cutoff = 0.05,
   pmn_padjust_method = "fdr",
+  pmn_n_perm = 999,
   visualize = TRUE, layout_method = "sugiyama",
   node_colors = c("Microbe" = "#9AA374", "Pathway" = "#C1ABAD", "Metabolite" = "#4E7286"),
-  node_shapes = c("Microbe" = "hexagon", "Pathway" = "dot", "Metabolite" = "diamond"),
+  node_shapes = c("Microbe" = "square", "Pathway" = "dot", "Metabolite" = "diamond"),
   base_node_size = 6, plot_width = 12, plot_height = 10, plot_dpi = 600
 ) {
   format <- match.arg(format)
@@ -85,22 +114,21 @@ con_mln <- function(
   mpn_filtering <- match.arg(mpn_filtering)
   mpn_mode <- match.arg(mpn_mode)
   mpn_filter_by <- match.arg(mpn_filter_by)
+  pmn_method <- match.arg(pmn_method)
+  pmn_bdgraph_algorithm <- match.arg(pmn_bdgraph_algorithm)
+  pmn_bdgraph_method <- match.arg(pmn_bdgraph_method)
   pmn_corr_method <- match.arg(pmn_corr_method)
   pmn_mode <- match.arg(pmn_mode)
   pmn_filter_by <- match.arg(pmn_filter_by)
   ppn_filter_by <- match.arg(ppn_filter_by)
 
-  validate_comparisons_structure(comparisons_list)
+  # Read metadata once for validation and comparison derivation
+  meta_temp <- read_input_file(metadata_file, file_type = "csv", stringsAsFactors = FALSE)
+  validate_comparisons_structure(comparisons_list, metadata = meta_temp)
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-  # Read metadata once to derive comparisons for consistent sub-layer dispatching
-  meta_temp <- read_input_file(metadata_file, file_type = "csv", stringsAsFactors = FALSE)
-  if (is.null(comparisons_list)) {
-    conditions <- sort(unique(meta_temp$class))
-    derived_comparisons <- combn(conditions, 2, simplify = FALSE)
-  } else {
-    derived_comparisons <- comparisons_list
-  }
+  # Derive comparisons using shared helper
+  derived_comparisons <- derive_comparisons(meta_temp, comparisons_list)
 
   message("Initializing data processing pipeline (Format: ", format, ").")
   processed_contrib_file <- file.path(output_dir, "processed_contribution.csv")
@@ -143,6 +171,9 @@ con_mln <- function(
     ppn_filter_by = ppn_filter_by, ppn_pvalue_cutoff = ppn_pvalue_cutoff,
     ppn_padjust_cutoff = ppn_padjust_cutoff,
     ppn_jaccard_cutoff = ppn_jaccard_cutoff, ppn_interaction_method = ppn_interaction_method,
+    ppn_min_gs_size = ppn_min_gs_size, ppn_max_gs_size = ppn_max_gs_size,
+    ppn_exponent = ppn_exponent, ppn_eps = ppn_eps, ppn_n_perm = ppn_n_perm,
+    ppn_seed = ppn_seed,
     ppn_compound_map = ppn_compound_map, ppn_compound_custom_map = ppn_compound_custom_map,
     comparisons_list = comparisons_list
   )
@@ -151,20 +182,63 @@ con_mln <- function(
   for (i in seq_along(ppn_results$gsea_paths)) {
     curr_gsea <- ppn_results$gsea_paths[i]
     curr_jaccard <- ppn_results$jaccard_paths[i]
-    # Use the matching comparison for this GSEA result
-    curr_comp <- if (i <= length(derived_comparisons)) list(derived_comparisons[[i]]) else comparisons_list
+    # Use the comparison that was actually paired with this GSEA result (fix for 1a)
+    curr_comp <- list(ppn_results$comparisons[[i]])
     message("Initiating multi-layered integration: ", basename(curr_gsea))
 
-    curr_mpn <- con_mpn_int(processed_contrib_file, metadata_file, NULL, file.path(output_dir, "mpn_output"), mpn_filtering, mpn_mode, mpn_filter_by, mpn_pvalue_cutoff, mpn_padjust_cutoff, curr_comp)[1]
-    curr_pmn <- con_pmn_int(
-      path_abun_file, met_con_file, curr_gsea, metadata_file, file.path(output_dir, "pmn_output"),
-      pmn_corr_method, pmn_mode, pmn_filter_by, pmn_corr_cutoff, pmn_pvalue_cutoff, 
-      pmn_padjust_cutoff, pmn_padjust_method,
-      curr_comp
+    curr_mpn <- con_mpn_int(
+      path_con_file = processed_contrib_file,
+      metadata_file = metadata_file,
+      taxonomy_file = NULL,
+      output_dir = file.path(output_dir, "mpn_output"),
+      mpn_filtering = mpn_filtering,
+      mpn_mode = mpn_mode,
+      mpn_filter_by = mpn_filter_by,
+      mpn_pvalue_cutoff = mpn_pvalue_cutoff,
+      mpn_padjust_cutoff = mpn_padjust_cutoff,
+      comparisons_list = curr_comp
     )[1]
+    curr_pmn <- con_pmn_int(
+      path_abun_file = path_abun_file,
+      met_con_file = met_con_file,
+      gsea_file = curr_gsea,
+      metadata_file = metadata_file,
+      output_dir = file.path(output_dir, "pmn_output"),
+      pmn_method = pmn_method,
+      pmn_bdgraph_prior = pmn_bdgraph_prior,
+      pmn_bdgraph_cutoff = pmn_bdgraph_cutoff,
+      pmn_bdgraph_iter = pmn_bdgraph_iter,
+      pmn_bdgraph_burnin = pmn_bdgraph_burnin,
+      pmn_bdgraph_algorithm = pmn_bdgraph_algorithm,
+      pmn_bdgraph_method = pmn_bdgraph_method,
+      pmn_bdgraph_jump = pmn_bdgraph_jump,
+      pmn_bdgraph_cores = pmn_bdgraph_cores,
+      ppn_bdgraph_min_shared = ppn_bdgraph_min_shared,
+      map_file = map_file,
+      pmn_corr_method = pmn_corr_method,
+      pmn_mode = pmn_mode,
+      pmn_filter_by = pmn_filter_by,
+      pmn_corr_cutoff = pmn_corr_cutoff,
+      pmn_pvalue_cutoff = pmn_pvalue_cutoff,
+      pmn_padjust_cutoff = pmn_padjust_cutoff,
+      pmn_padjust_method = pmn_padjust_method,
+      comparisons_list = curr_comp,
+      pmn_n_perm = pmn_n_perm
+    )
+
+    # When bdgraph is used, PPN edges come from the PMN result (bundled)
+    if (pmn_method == "bdgraph") {
+      curr_pmn_path <- curr_pmn$pmn_path
+      curr_ppn_bdgraph <- curr_pmn$ppn_path
+      # Use BDgraph PPN if available, otherwise fall back to Jaccard
+      final_ppn <- if (!is.null(curr_ppn_bdgraph) && file.exists(curr_ppn_bdgraph)) curr_ppn_bdgraph else curr_jaccard
+    } else {
+      curr_pmn_path <- curr_pmn[1]
+      final_ppn <- curr_jaccard
+    }
 
     res_path <- con_mln_int(
-      gsea_file = curr_gsea, mpn_file = curr_mpn, ppn_file = curr_jaccard, pmn_file = curr_pmn,
+      gsea_file = curr_gsea, mpn_file = curr_mpn, ppn_file = final_ppn, pmn_file = curr_pmn_path,
       output_dir = file.path(output_dir, "mln_final"), visualize = visualize,
       layout_method = layout_method, node_colors = node_colors, node_shapes = node_shapes,
       base_node_size = base_node_size, plot_width = plot_width, plot_height = plot_height, plot_dpi = plot_dpi,
